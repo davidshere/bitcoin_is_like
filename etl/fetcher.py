@@ -3,11 +3,11 @@ import json
 import sys
 import time
 		
-import requests
-import pandas as pd	
 import numpy as np
-
+import pandas as pd
 import Quandl as q
+import requests
+
 from config import QUANDL_API_KEY
 
 
@@ -30,90 +30,39 @@ class Fetcher(object):
 	 * V2 will interact with the DB to only fetch fresh data
 	   V2 will also pull the metadata on the series we track (i.e. its Source) from a db table
 	"""
+	SOURCE_RELELVANT_COLUMN_MAP = {'WIKI': 10,
+								   'WSJ': 1,
+								   'OFDP': 4,
+								   'ODA': 1,
+								   'WORLDBANK': 1,
+								   'BRP': 1,
+								   'BNP': 1,
+								   'BUNDESBANK': 1,
+								   'DOE': 1,
+								   'FRED': 1 }
 
-	#QUANDL_CLOSING_STOCK_PRICE_COLUMN_NUMBER = 10
-	#QUANDL_CLOSING_FX_COLUMN_NUMBER = 1
-
-	QUANDL_ENDPOINT = 'https://www.quandl.com/api/v1/datasets/%s.json'
-
-	SOURCE_COLUMN_MAP =   {'WIKI': 10,
-						   'GOOG': 4,
-						   'WSJ': 1,
-						   'OFDP': 4,
-						   'ODA': 1,
-						   'WORLDBANK': 1,
-						   'BRP': 1,
-						   'BNP': 1,
-						   'BUNDESBANK': 1,
-						   'DOE': 1,
-						   'FRED': 1 }
-
-	def __init__(self):
-		pass
-
-	def _fetch_quandl_series(self, code, source, start='2010-07-17'):
-		''' Takes a source code, and a source, and returns a data frame.
-
-			Quandl has their own Python library, but it didn't have good enough error handling
-			Also, this is a learning project, and I wanted to learn more about requests
-
-			Also, sets a time delay so we don't go over the 2000 API calls/10 minutes that Quandl has set,
-			I can do that from in here
-		'''
-		column = self.SOURCE_COLUMN_MAP[source] # which column number do we need?
-		series_name = code.split('/')[1] # for naming the series in our data frame
-
-		session = requests.Session()
-
-		payload = {'sort_order': 'asc'} # that's going to be constant.
-		payload.update({'trim_start': start, 'column':column, 'auth_token':QUANDL_API_KEY})
-		'''
-		**********************************************
-		This part will wait till I get another error
-		**********************************************
-
-		session.mount("http://", requests.adapters.HTTPAdapter(max_retries=3))
-		session.mount("https://", requests.adapters.HTTPAdapter(max_retries=3))
-		tries = 0
-		fails = 0
-		while tries < 3:			
-			request_url = self.QUANDL_ENDPOINT %  code
-			try:
-				response = session.get(request_url, params=payload)
-			except:
-				tries += 1
-				fails += 1
-		'''
-
-		response = session.get(self.QUANDL_ENDPOINT % code, params=payload)
-		content = json.loads(response.content)
-		columns = content['column_names']
- 		data = content['data']
- 		if data:
-			df = pd.DataFrame(data)
-			df.columns = pd.Index(columns)
-			df.set_index(columns[0], drop=True, inplace=True)
-			df.columns = pd.Index([series_name])
-			return df
-
+	def _fetch_quandl_series(self, series, source):
+		column = self.SOURCE_RELELVANT_COLUMN_MAP[source]
+		response = q.get(series.upper(), trim_start='2010-07-17', column=column, authtoken = QUANDL_API_KEY)
+		
+		name = series.split('/')[1]
+		response.columns = pd.Index([name])
+		return response
 
 	def fetch_equity_series(self):
 		first = True
-		docs = pd.read_json(EQUITY_INFILE)
-		# Assume we fetch the codes from the documentation
-		nasdaq = docs[docs.code.str[:6]=='NASDAQ']
-		codes = nasdaq.source_code.str[:] + "/" + nasdaq.code.str[:] #ugly, I know
-		for i, code in enumerate(codes):
+		codes = pd.read_json(EQUITY_INFILE)
+		print codes.shape
+		for i, code in enumerate(codes.iloc[:,0]):
 			print "Fetching series %d of %d, %s" % (i, len(codes.index), code)
-			series = self._fetch_quandl_series(code, source='GOOG')
-			if isinstance(series, pd.DataFrame): # need to check if _fetch_quandl_series returned anything
-				if first:
-					stock_frame = series
-					first = False
-				else:
-					stock_frame = stock_frame.join(series)
-				if i == 1000:
-					break
+			series = self._fetch_quandl_series(code, source='WIKI')
+			if first:
+				stock_frame = series
+				first = False
+			else:
+				stock_frame = stock_frame.join(series)
+			if i == 100: # we don't need the entire series
+				break
 		return stock_frame
 
 	def fetch_commodity_series(self):
@@ -157,7 +106,7 @@ class Fetcher(object):
 		return fx_frame
 
 	def fetch_bitcoin_series(self, days=1800):
-		''' Fetches historical BTC price data from Coinbase, returns a Data Frame '''
+		''' Fetches historical BTC price data from Coinbase, returns a Series '''
 		response = requests.get(COINBASE_ENDPOINT % days)
 		if response:
 		    data = response.content
@@ -165,7 +114,7 @@ class Fetcher(object):
 		btc_history.date = pd.to_datetime(btc_history.date)
 		btc_history.set_index('date', inplace=True)
 		btc_history.columns = pd.Index(['btc'])
-		return btc_history	
+		return btc_history.btc
 
 def fetch_quandl_docs(source, pages=1):
 	''' Returns a data frame with metadata on quandl series '''
