@@ -146,24 +146,4 @@ class Fetcher(object):
 if __name__ == '__main__':
 
 	f =	Fetcher()
-
-	#last_updated = f.fetch_last_updated_dates()
-	#updated_data = f.fetch_all_fresh_series(last_updated)
-	#f.write_economic_data_to_db(updated_data)
 	f.update()
-
-
-
-	'''
-	a = last_updated[0]
-	print a
-	id = a[0]
-	qcode = a[1]
-	source = a[2]
-	updated = a[3]
-	x = f._fetch_quandl_series(qcode, source)
-
-
-
-	'''
-	
