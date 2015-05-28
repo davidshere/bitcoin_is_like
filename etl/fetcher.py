@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 import json	
 import sys
 import time
@@ -7,152 +7,143 @@ import numpy as np
 import pandas as pd
 import Quandl as q
 import requests
+from sqlalchemy import update, func
 
 from config import QUANDL_API_KEY
+from connection_manager import DBConnect
+from models import EconomicMetadata, EconomicSeries
 
 
 COINBASE_ENDPOINT = 'https://www.coinbase.com/charts/price_history?days=%s'
 
-EQUITY_INFILE = 'sample_data/google_docs.json'
-EQUITY_OUTFILE = 'sample_data/goog_stock_series.csv'
-
-COMMODITY_INFILE = 'sample_data/commodities.csv'
-COMMODITY_OUTFILE = 'sample_data/wsj_commodity_series.csv'
-
-FX_INFILE = 'sample_data/bnpparibas_docs.csv'
-FX_OUTFILE = 'sample_data/bnp_fx_series.csv'
-
 class Fetcher(object):
-	""" 
-	A class to fetch data from the Quandl. 
+	'''
+		Class to update the cust_series table.
 
-	 * V1 fetches sample data
-	 * V2 will interact with the DB to only fetch fresh data
-	   V2 will also pull the metadata on the series we track (i.e. its Source) from a db table
-	"""
+		1. Fetches, for each series in dim_series, the series code and the last_updated date
+		2. For each code, fetches the data from the last_updated date
+		3. Appends updates to cust_series table
+
+		Also contains helper methods for fetching other things, including documentation.
+	'''
+
 	SOURCE_RELELVANT_COLUMN_MAP = {'WIKI': 10,
 								   'WSJ': 1,
 								   'OFDP': 4,
 								   'ODA': 1,
 								   'WORLDBANK': 1,
+								   'GOOG': 1,
 								   'BRP': 1,
 								   'BNP': 1,
 								   'BUNDESBANK': 1,
 								   'DOE': 1,
 								   'FRED': 1 }
 
-	def _fetch_quandl_series(self, series, source):
+	def __init__(self):
+		self.session = DBConnect().create_session()
+
+	def _fetch_quandl_series(self, series, source, start='2010-07-17'):
 		column = self.SOURCE_RELELVANT_COLUMN_MAP[source]
-		response = q.get(series.upper(), trim_start='2010-07-17', column=column, authtoken = QUANDL_API_KEY)
-		
+		response = q.get(series.upper(), trim_start=start, column=column, authtoken=QUANDL_API_KEY)
 		name = series.split('/')[1]
 		response.columns = pd.Index([name])
 		return response
 
-	def fetch_equity_series(self):
-		first = True
-		codes = pd.read_json(EQUITY_INFILE)
-		print codes.shape
-		for i, code in enumerate(codes.iloc[:,0]):
-			print "Fetching series %d of %d, %s" % (i, len(codes.index), code)
-			series = self._fetch_quandl_series(code, source='WIKI')
-			if first:
-				stock_frame = series
-				first = False
-			else:
-				stock_frame = stock_frame.join(series)
-			if i == 100: # we don't need the entire series
-				break
-		return stock_frame
+	def fetch_last_updated_dates(self):
+		''' A method to query dim_series for the last updated dates for each series '''
+		last_updated = self.session.query(EconomicMetadata.id,
+										  EconomicMetadata.quandl_code,
+										  EconomicMetadata.source_code,
+										  EconomicMetadata.last_updated).all()
+		keys = ['id', 'quandl_code', 'source_code', 'last_updated']
+		list_of_dicts = [dict(zip(keys, row)) for row in last_updated]
+		return list_of_dicts
 
-	def fetch_commodity_series(self):
-		''' For this test fetch, we're just going to fetch WSJ data, for simplicity '''
-		first = True
-		codes = pd.read_csv(COMMODITY_INFILE)
-		wsj_codes = codes[codes.Source=='WSJ'].Code
-		for i, code in enumerate(wsj_codes):
-			print "Fetching commodity series %d of %d, %s" % (i, len(codes.index), code)
-			series = self._fetch_quandl_series(code, source='WSJ')
-			if isinstance(series, pd.DataFrame): # need to check if _fetch_quandl_series returned anything
-				if first:
-					commodity_frame = series
-					first = False
-				else:
-				    try:
-				    	commodity_frame = commodity_frame.join(series)
-				    except ValueError:
-				    	pass
-		return commodity_frame
+	def fetch_single_latest(self, series_metadata):
+		''' 
+			Fetches updated data from Quandl based on the metadata.
 
-	def fetch_fx_series(self):
-		first = True
-		codes = pd.read_csv(FX_INFILE).code
-		dollar_price_codes = []
-		for code in codes:
-			if code[3:]=='USD':
-				dollar_price_codes.append(code)
-		for i, code in enumerate(dollar_price_codes):
-			print "Fetching fx series %d of %d, %s" % (i, len(dollar_price_codes), code)
-			full_code = 'BNP/%s' % code
-			series = self._fetch_quandl_series(full_code, source='BNP')
-			if first:
-				fx_frame = series
-				first = False
-			else:
-			    try:
-			    	fx_frame = fx_frame.join(series)
-			    except ValueError:
-			    	pass
-		return fx_frame
+			Returns a Data Frame in the shape it's supposed to be in for the
+			db.
 
-	def fetch_bitcoin_series(self, days=1800):
+			1. Fetch Quandl codes and last updated dates
+			2. For each Quandl Code:
+				2a. If there is a last updated date, fetch the fresh data
+				2b. If there is no last updated date, fetch all data past a given start date
+
+		'''
+		source = series_metadata['source_code']
+		qcode = series_metadata['quandl_code']
+		id = series_metadata['id']
+
+		# fetch the data
+		if series_metadata['last_updated']:
+			next = series_metadata['last_updated'] + timedelta(days=1)
+			data = self._fetch_quandl_series(qcode, source, start=next)
+		else:
+			data = self._fetch_quandl_series(qcode, source)
+
+		# transform the data
+		data.columns = pd.Index(['value'])
+		data['series_id'] = id
+		data['date'] = data.index
+		return data.to_dict(orient='records')
+
+	def fetch_all_fresh_series(self, economic_metadata):
+		fresh_data = list()
+		for i, series in enumerate(economic_metadata):
+			fresh = f.fetch_single_latest(series)
+			fresh_data.extend(fresh)
+		return fresh_data
+
+	def write_economic_data_to_db(self, updated_data):
+		''' Should write the new values from fetch_latest to cust_series,
+			and update the last_updated field in dim_series
+		'''
+		emd_objects = [EconomicSeries(series_id=datapoint['series_id'],
+									  date=datapoint['date'],
+									  value=datapoint['value']) 
+									  for datapoint in updated_data]
+		self.session.add_all(emd_objects)
+		self.session.commit()
+		return 0
+
+	def run_stored_procedures(self):
+		sp_list = ['sp_updated_freshest_date']
+		conn = self.session.bind.raw_connection()
+		try:
+			cursor = conn.cursor()
+			for sp in sp_list:
+				cursor.callproc(sp)
+			cursor.close()
+			conn.commit()
+		finally:	
+			conn.close()
+
+	def update(self):
+		''' This should be run from run_etl.py. '''
+		last_updated = self.fetch_last_updated_dates()
+		updated_data = f.fetch_all_fresh_series(last_updated)
+		self.write_economic_data_to_db(updated_data)
+		self.run_stored_procedures() # runs a procedure to update our last updated fields
+		return 0
+
+	def fetch_bitcoin_series(self, days=999):
 		''' Fetches historical BTC price data from Coinbase, returns a Series '''
+		print COINBASE_ENDPOINT % days
 		response = requests.get(COINBASE_ENDPOINT % days)
+		print response
 		if response:
 		    data = response.content
 		    btc_history = pd.read_json(data)
+		else:
+			return None
 		btc_history.date = pd.to_datetime(btc_history.date)
 		btc_history.set_index('date', inplace=True)
 		btc_history.columns = pd.Index(['btc'])
 		return btc_history.btc
 
-def fetch_quandl_docs(source, pages=1):
-	''' Returns a data frame with metadata on quandl series '''
-	DOCUMENTATION_ENDPOINT =  'http://www.quandl.com/api/v2/datasets.json?query=*&source_code=%s&per_page=300&page=%s&auth_token=%s' 
-
-	docs = []
-	for i in range(1, pages + 1):
-		url = DOCUMENTATION_ENDPOINT % (source, i, QUANDL_API_KEY)
-		print "Fetching page %s" % i
-		response = requests.get(url)
-		content = response.content
-		try:
-			json_obj = json.loads(content)
-		except ValueError:
-			print 'Failure:/n/n%s' % content
-		docs.append(json_obj)
-	sources = [page['docs'] for page in docs]
-	list_of_sources = []
-	for source in sources:
-		list_of_sources.extend(source)
-	df = pd.DataFrame(list_of_sources)
-	df = df[['code', 'description', 'frequency', 'from_date', 'name', 'source_code', 'to_date']]
-	return df
-
 if __name__ == '__main__':
 
 	f =	Fetcher()
-
-	equity = f.fetch_equity_series()
-	equity.to_csv(EQUITY_OUTFILE)
-	'''
-	commodity = f.fetch_commodity_series()
-	commodity.to_csv(COMMODITY_OUTFILE)	
-
-
-	fx = f.fetch_fx_series()
-	fx.to_csv(FX_OUTFILE)
-
-	equity = f.fetch_equity_series()
-	equity.to_csv(EQUITY_OUTFILE)
-	'''
+	f.update()
