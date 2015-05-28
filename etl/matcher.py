@@ -31,8 +31,8 @@ class Matcher(object):
         self.btc = processed_btc[processed_btc.index >= start_date]
         self.comparison_series = processed_df[processed_df.index >= start_date]
 
-        self.indexed_btc = self.btc / self.btc.iloc[0]
-        self.indexed_series = self.comparison_series / self.comparison_series.iloc[0,]
+        self.ibtc = (self.btc / self.btc.iloc[0])['price']
+        self.idata = self.comparison_series / self.comparison_series.iloc[0,]
 
     def index_series(self, series):
         return series / series[0]
@@ -43,17 +43,6 @@ class Matcher(object):
             covariances.update({i: self.btc.cov(self.comparison_series[i])})
         return covariances
 
-    def std_devs(self, index=False, diff=False):
-        if index:
-            std_devs = self.indexed_series.apply(np.std)
-            btc_std_dev = self.indexed_btc.std()[0] 
-        else:
-            btc_std_dev = self.btc.std()[0]
-            std_devs = self.comparison_series.apply(np.std)
-        if diff:
-            return std_devs - btc_std_dev
-        else:
-            return btc_std_dev, std_devs
 
     def variances(self, index=False):
         standard_deviations = self.std_devs(index=index)
@@ -61,7 +50,7 @@ class Matcher(object):
 
     def total_percent_change(self, diff=False):
         comparison_series_pct_change = self.comparison_series.iloc[-1,:] / self.comparison_series.iloc[0,:]
-        btc_pct_change = (self.btc.iloc[-1] / self.btc.iloc[0])[0]
+        btc_pct_change = self.btc.iloc[-1] / self.btc.iloc[0]
         if diff:
             return comparison_series_pct_change - btc_pct_change
         else:
@@ -75,12 +64,26 @@ class Matcher(object):
             values.update({i:(series.max()/series.min())})
         return max_btc, pd.Series(values)
 
+    def cross_correlate(self):
+        correlations = {i: np.correlate(self.idata[i], self.ibtc) for i in self.idata}
+        return pd.DataFrame(correlations)
+
     def mean_absolute_deviation(self):
         pass
 
+    def std_devs(self, index=False, diff=False):
+        if index:
+            std_devs = self.idata.apply(np.std)
+            btc_std_dev = self.ibtc.std()
+        else:
+            std_devs = self.comparison_series.apply(np.std)
+            btc_std_dev = self.btc.std()[0]
+        if diff:
+            return std_devs - btc_std_dev
+        else:
+            return btc_std_dev, std_devs
 
-
-    def matcher(self, algorithm=1):
+    def matcher(self):
         ''' This method applies the matching algorithm, and returns the source and code
             of the winning series.
 
@@ -97,21 +100,34 @@ class Matcher(object):
                 * Add up the points, and the highest points wins. We can also weight different measures
                   differently, emphasizing one statistic over the other
         '''
-        if algorithm == 1:
-            diffs = self.std_devs(index=True, diff=True)
-            fifty_closest_std = diffs.abs().order()[:50]            
-            return fifty_closest_std.index[0]
+        diffs = self.std_devs(index=True, diff=True)
+        fifty_closest_std_index = diffs.abs().order()[:50].index    
+        fifty_closest_std_series = self.idata[fifty_closest_std_index]
+
+        btc_pct = self.ibtc[-1] - self.ibtc[0]
+        data_pct = fifty_closest_std_series.iloc[-1,:] - fifty_closest_std_series.iloc[0,:]
+        ten_closest_pct_diffs_index = (data_pct - btc_pct).abs().order()[:10].index
+        ten_closest_pct_diffs_series = fifty_closest_std_series[ten_closest_pct_diffs_index]
+
+        series_diffs = (ten_closest_pct_diffs_series - btc_pct)
+        least_squared_diff = (series_diffs ** 2).apply(np.sum).order().index[0]
+        return least_squared_diff
+
 
 if __name__ == '__main__':
 
-    data = pd.read_csv('sample_data/bnp_fx_series.csv')
+    data = pd.read_csv('sample_data/full_test_frame.csv')
     data.set_index('Date', inplace=True)
 
-    START_DATE = '2014-03-06'
+
     btc = pd.read_csv('sample_data/historical_btc_data.csv') #Fetcher().fetch_bitcoin_series()
     btc.set_index('date', inplace=True)
 
+    START_DATE = '2014-01-01'
     m = Matcher(btc, data)
     m.prep_frame(START_DATE)
 
-    a, b = m.variances()
+    match = m.matcher()
+    print match
+
+    correlations = m.cross_correlate()
