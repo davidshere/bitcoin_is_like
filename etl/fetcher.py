@@ -92,7 +92,6 @@ class Fetcher(object):
 	def fetch_all_fresh_series(self, economic_metadata):
 		fresh_data = list()
 		for i, series in enumerate(economic_metadata):
-			print i
 			fresh = f.fetch_single_latest(series)
 			fresh_data.extend(fresh)
 		return fresh_data
@@ -109,22 +108,6 @@ class Fetcher(object):
 		self.session.commit()
 		return 0
 
-	def update_last_updated_fields(self):
-		conn = self.session.connection()
-		most_recent = self.session.query(EconomicSeries.series_id, 
-						func.max(EconomicSeries.date))\
-			.group_by(EconomicSeries.series_id).all()
-
-		
-		update_statements = []
-		for series_id, date in most_recent:
-			statement = update(EconomicMetadata).where(EconomicMetadata.id==series_id).values(last_updated=date)
-			update_statements.append(statement)
-		return update_statements
-		self.session.commit()
-		conn.close()
-		return 0
-
 	def run_stored_procedures(self):
 		sp_list = ['sp_updated_freshest_date']
 		conn = self.session.bind.raw_connection()
@@ -136,7 +119,6 @@ class Fetcher(object):
 			conn.commit()
 		finally:	
 			conn.close()
-
 
 	def update(self):
 		''' This should be run from run_etl.py. '''
