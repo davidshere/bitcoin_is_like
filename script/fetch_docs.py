@@ -6,8 +6,8 @@ import requests
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from models import EconomicMetadata
-from config import QUANDL_API_KEY
+from etl.models import EconomicMetadata
+from etl.config import QUANDL_API_KEY
 from connection_manager import DBConnect
 
 '''
@@ -74,7 +74,7 @@ def load_docs_to_db(df):
 
 if __name__ == '__main__':
 	
+	
 	gdocs = fetch_quandl_docs('GOOG', pages=1)
 	docs = transform_google_docs(gdocs)
-	#docs.to_csv('final_google_docs.csv')
 	load_docs_to_db(docs)
