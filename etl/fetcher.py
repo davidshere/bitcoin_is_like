@@ -106,10 +106,6 @@ class Fetcher(object):
 		data.to_json(path)
 		return data.to_dict(orient='records')
 
-	def fetch_recent_bitcoin_data(self, series_id):
-		''' Bitcoin price data comes from api.bitcoinaverage.com '''
-		pass
-
 	def fetch_all_fresh_series(self, economic_metadata, recently_updated=True):
 		for i, series in enumerate(economic_metadata):
 			print i, series
@@ -117,10 +113,10 @@ class Fetcher(object):
 				self.fetch_single_latest_quandl(series)
 			else:
 				btc_fetcher = FetchBTC()
-				btc_fetcher.fetch_bitcoin_data
+				btc_fetcher.fetch_bitcoin_data()
 		return 0
 
-	def write_economic_data_to_db(self, dicts_to_write):
+	def write_economic_dicts_to_db(self, dicts_to_write):
 		''' Should write the new values from fetch_latest to cust_series '''
 		economic_series = [EconomicSeries(series_id=datapoint['series_id'],
 									  date=datapoint['date'],
@@ -131,9 +127,24 @@ class Fetcher(object):
 		self.session.close()
 		return 0
 
+	def write_to_db_from_json_filenames(self):
+		''' Function to write data to DB from json files in a folder in the working directory'''
+		path_to_names = '{basedir}/{folder}/'.format(basedir=os.getcwd(), folder=FETCHED_DATA_FOLDER)
+		print path_to_names
+		filenames = os.listdir(path_to_names)
+		print filenames
+		full_paths =  ['{path}/{file}'.format(path=path_to_names, file=filename) for filename in filenames]
+		for filename in full_paths:
+			try:
+				updated_data = pd.read_json(filename).to_dict(orient='records')
+			except ValueError:
+				continue
+			self.write_economic_dicts_to_db(updated_data)
+
 	def run_stored_procedures(self):
-		sp_list = ['sp_updated_freshest_date']
-		# sp_list.append('sp_delete_duplicates')
+		sp_list = ['sp_updated_freshest_date',
+  				   'sp_delete_duplicates_from_cust_series'
+				]
 		conn = self.session.bind.raw_connection()
 		try:
 			cursor = conn.cursor()
@@ -153,6 +164,8 @@ class Fetcher(object):
 		return 0
 
 class FetchBTC(Fetcher):
+	''' Class to fetch bitcoin price data from bitcoinaverage.com, transform
+		it, and write the results to .json file '''
 
 	def _parse_bitcoinaverage_datetime(self, timestamp):
 		''' Turn 2010-07-17 00:00:00 into a python date object '''
@@ -179,10 +192,11 @@ class FetchBTC(Fetcher):
 		return rows
 
 	def fetch_bitcoin_metadata(self):
-		btc_data = self.session.query(EconomicMetadata.id, 
-								   EconomicMetadata.last_updated).filter(EconomicMetadata.quandl_code == None).one()
-		series_id = btc_data[0]
-		last_updated = btc_data[1]
+		btc_query = self.session.query(EconomicMetadata.id, EconomicMetadata.last_updated)
+		filtered_query = btc_query.filter(EconomicMetadata.quandl_code == None)
+		result = filtered_query.one()
+		series_id = result[0]
+		last_updated = result[1]
 		self.metadata = {'series_id': series_id, 'last_updated': last_updated}
 		return self.metadata
 
@@ -208,29 +222,14 @@ class FetchBTC(Fetcher):
 		self.write_bitcoin_data_to_json(dicts)
 
 
-def write_to_db_from_json_filenames(foldername):
-	''' Function to write data to DB from json files in a folder in the working directory'''
-	path_to_names = '{basedir}/{folder}/'.format(basedir=os.getcwd(), folder=foldername)
-	filenames = os.listdir(path_to_names)
-	full_paths =  ['backfilled_data/{file}'.format(path=path_to_names, file=filename) for filename in filenames]
-	for filename in full_paths:
-		print filename
-		try:
-			updated_data = pd.read_json(filename).to_dict(orient='records')
-		except ValueError:
-			print filename
-			continue
-		f.write_economic_data_to_db(updated_data)
-
-
-
 if __name__ == '__main__':
 
 	f =	Fetcher()
+	f.run_stored_procedures()
 	#historical_btc = f.fetch_historical_bitcoin_data()
 	#f.write_economic_data_to_db(historical_btc)
 	#d = f.fetch_bitcoin_average(10522)
 	#print d
-	f.update()
+	#f.update()
 
 
