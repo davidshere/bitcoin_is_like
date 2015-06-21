@@ -16,14 +16,19 @@ from models import EconomicMetadata, EconomicSeries
 
 FETCHED_DATA_FOLDER = 'fetched_data'
 
-class Fetcher(object):
-	'''
-		Class to update the cust_series table.
+class FetcherBase(object):
+	def __init__(self):
+		self.session = DBConnect().create_session()
+		self.check_or_create_destination_folder()
 
-		1. Fetches, for each series in dim_series, the series code and the last_updated date
-		2. For each code, fetches the data from the last_updated date
-		3. Writes new and updated data to the data base
-	'''
+	def check_or_create_destination_folder(self):
+		if not os.path.exists(FETCHED_DATA_FOLDER):
+			os.makedirs(FETCHED_DATA_FOLDER)
+
+
+class FetchQuandl(FetcherBase):
+	''' Class to fetch a series from the Quandl API, transform it, and write
+		the results to a .json file '''
 
 	SOURCE_RELELVANT_COLUMN_MAP = {'WIKI': 10,
 								   'WSJ': 1,
@@ -37,9 +42,6 @@ class Fetcher(object):
 								   'DOE': 1,
 								   'FRED': 1 }
 
-	def __init__(self):
-		self.session = DBConnect().create_session()
-
 	def _fetch_quandl_series(self, series, source, start='2010-07-17'):
 		column = self.SOURCE_RELELVANT_COLUMN_MAP[source]
 		response = q.get(series.upper(), trim_start=start, column=column, authtoken=QUANDL_API_KEY)
@@ -47,34 +49,12 @@ class Fetcher(object):
 		response.columns = pd.Index([name])
 		return response
 
-	def fetch_last_updated_dates(self, backfill=False):
-		''' A method to query dim_series for the last updated dates for each series 
+	def add_metadata(self, metadata):
+		self.metadata = metadata
 
-			If backfill=True, we're only pulling metadata on series which have no 
-			presence in cust_series
-		'''
-		if backfill:
-			last_updated = self.session.query(EconomicMetadata.id,
-											  EconomicMetadata.quandl_code,
-											  EconomicMetadata.source_code,
-											  EconomicMetadata.last_updated).filter(
-											  EconomicMetadata.last_updated==None).all()
-		else:
-			last_updated = self.session.query(EconomicMetadata.id,
-											  EconomicMetadata.quandl_code,
-											  EconomicMetadata.source_code,
-											  EconomicMetadata.last_updated).all()
-
-		keys = ['id', 'quandl_code', 'source_code', 'last_updated']
-		list_of_dicts = [dict(zip(keys, row)) for row in last_updated]
-		return list_of_dicts
-
-	def fetch_single_latest_quandl(self, series_metadata):
+	def fetch_single_latest_quandl(self):
 		''' 
 			Fetches updated data from Quandl based on the metadata.
-
-			Returns a Data Frame in the shape it's supposed to be in for the
-			db.
 
 			1. Fetch Quandl codes and last updated dates
 			2. For each Quandl Code:
@@ -82,88 +62,35 @@ class Fetcher(object):
 				2b. If there is no last updated date, fetch all data past a given start date
 
 		'''
-		source = series_metadata['source_code']
-		qcode = series_metadata['quandl_code']
-		series_id = series_metadata['id']
-
+		source = self.metadata['source_code']
+		qcode = self.metadata['quandl_code']
 		# check if there's a last updated date, then fetch the data
-		if series_metadata['last_updated']:
-			next = series_metadata['last_updated'] + timedelta(days=1)
+		if self.metadata['last_updated']:
+			next = self.metadata['last_updated'] + timedelta(days=1)
 			# THIS IS CRAPPY, YOU SHOULD FIX IT AT SOME POINT
 			try: # protect against exceptions when hitting the Quandl API
-				data = self._fetch_quandl_series(qcode, source, start=next)
+				self.data = self._fetch_quandl_series(qcode, source, start=next)
 			except:
 				return None
 		else:
-			data = self._fetch_quandl_series(qcode, source)
+			self.data = self._fetch_quandl_series(qcode, source)
 
-		# transform the data
-		data.columns = pd.Index(['value'])
-		data['series_id'] = series_id
-		data['date'] = data.index
+	def transform(self):
+		self.data.columns = pd.Index(['value'])
+		self.data['series_id'] = self.metadata['id']
+		self.data['date'] = self.data.index
 
-		path = '{folder}/{qcode}.json'.format(folder=FETCHED_DATA_FOLDER, qcode=series_id)
-		data.to_json(path)
-		return data.to_dict(orient='records')
+	def write_to_json(self):
+		path = '{folder}/{qcode}.json'.format(folder=FETCHED_DATA_FOLDER, qcode=self.metadata['id'])
+		self.data.to_json(path)
 
-	def fetch_all_fresh_series(self, economic_metadata, recently_updated=True):
-		for i, series in enumerate(economic_metadata):
-			print i, series
-			if series['quandl_code']: # check if there's a quandl code (btc won't have one)
-				self.fetch_single_latest_quandl(series)
-			else:
-				btc_fetcher = FetchBTC()
-				btc_fetcher.fetch_bitcoin_data()
-		return 0
+	def fetch(self):
+		self.fetch_single_latest_quandl()
+		self.transform()
+		self.write_to_json()
 
-	def write_economic_dicts_to_db(self, dicts_to_write):
-		''' Should write the new values from fetch_latest to cust_series '''
-		economic_series = [EconomicSeries(series_id=datapoint['series_id'],
-									  date=datapoint['date'],
-									  value=datapoint['value']) 
-									  for datapoint in dicts_to_write]
-		self.session.add_all(economic_series)
-		self.session.commit()
-		self.session.close()
-		return 0
 
-	def write_to_db_from_json_filenames(self):
-		''' Function to write data to DB from json files in a folder in the working directory'''
-		path_to_names = '{basedir}/{folder}/'.format(basedir=os.getcwd(), folder=FETCHED_DATA_FOLDER)
-		print path_to_names
-		filenames = os.listdir(path_to_names)
-		print filenames
-		full_paths =  ['{path}/{file}'.format(path=path_to_names, file=filename) for filename in filenames]
-		for filename in full_paths:
-			try:
-				updated_data = pd.read_json(filename).to_dict(orient='records')
-			except ValueError:
-				continue
-			self.write_economic_dicts_to_db(updated_data)
-
-	def run_stored_procedures(self):
-		sp_list = ['sp_updated_freshest_date',
-  				   'sp_delete_duplicates_from_cust_series'
-				]
-		conn = self.session.bind.raw_connection()
-		try:
-			cursor = conn.cursor()
-			for sp in sp_list:
-				cursor.callproc(sp)
-			cursor.close()
-			conn.commit()
-		finally:	
-			conn.close()
-
-	def update(self):
-		''' This should be run from run_etl.py. '''
-		last_updated = self.fetch_last_updated_dates()
-		updated_data = self.fetch_all_fresh_series(last_updated)
-		self.write_economic_data_to_db(updated_data)
-		self.run_stored_procedures()
-		return 0
-
-class FetchBTC(Fetcher):
+class FetchBTC(FetcherBase):
 	''' Class to fetch bitcoin price data from bitcoinaverage.com, transform
 		it, and write the results to .json file '''
 
@@ -210,22 +137,113 @@ class FetchBTC(Fetcher):
 		return value_dicts
 
 	def write_bitcoin_data_to_json(self, data):
-		df = pd.DataFrame(data).set_index('date', drop=False)
-		series_id = self.metadata['series_id']
-		path = '{folder}/{series_id}.json'.format(folder=FETCHED_DATA_FOLDER, series_id=series_id)
-		df.to_json(path)
+		if data: # check if anything was returned - if BTC series is totally fresh, nothing will be
+			df = pd.DataFrame(data).set_index('date', drop=False)
+			series_id = self.metadata['series_id']
+			path = '{folder}/{series_id}.json'.format(folder=FETCHED_DATA_FOLDER, series_id=series_id)
+			df.to_json(path)
 
 	def fetch_bitcoin_data(self):
 		rows = self.fetch_bitcoin_file()
 		metadata = self.fetch_bitcoin_metadata()
 		dicts = self.transform_bitcoin_data(metadata=metadata, rows=rows)
-		self.write_bitcoin_data_to_json(dicts)
+		if dicts:
+			self.write_bitcoin_data_to_json(dicts)
+
+class Fetcher(FetcherBase):
+	'''
+		Class to update the cust_series table.
+
+		1. Fetches, for each series in dim_series, the series code and the last_updated date
+		2. For each code, fetches the data from the last_updated date
+		3. Writes new and updated data to the data base
+	'''
+
+	def fetch_last_updated_dates(self, backfill=False):
+		''' A method to query dim_series for the last updated dates for each series 
+
+			If backfill=True, we're only pulling metadata on series which have no 
+			presence in cust_series
+		'''
+		if backfill:
+			last_updated = self.session.query(EconomicMetadata.id,
+											  EconomicMetadata.quandl_code,
+											  EconomicMetadata.source_code,
+											  EconomicMetadata.last_updated).filter(
+											  EconomicMetadata.last_updated==None).all()
+		else:
+			last_updated = self.session.query(EconomicMetadata.id,
+											  EconomicMetadata.quandl_code,
+											  EconomicMetadata.source_code,
+											  EconomicMetadata.last_updated).all()
+
+		keys = ['id', 'quandl_code', 'source_code', 'last_updated']
+		list_of_dicts = [dict(zip(keys, row)) for row in last_updated]
+		return list_of_dicts
+
+	def fetch_all_fresh_series(self, economic_metadata, recently_updated=True):
+		for i, series in enumerate(economic_metadata):
+			print i, series
+			if series['quandl_code']: # check if there's a quandl code (btc won't have one)
+				quandl_fetcher = FetchQuandl()
+				quandl_fetcher.add_metadata(series)
+				quandl_fetcher.fetch()
+			else:
+				btc_fetcher = FetchBTC()
+				btc_fetcher.fetch_bitcoin_data()
+		return 0
+
+	def _write_economic_dicts_to_db(self, dicts_to_write):
+		''' Should write the new values from fetch_latest to cust_series '''
+		economic_series = [EconomicSeries(series_id=datapoint['series_id'],
+									  date=datapoint['date'],
+									  value=datapoint['value']) 
+									  for datapoint in dicts_to_write]
+		self.session.add_all(economic_series)
+		self.session.commit()
+		self.session.close()
+		return 0
+
+	def write_to_db_from_json_filenames(self):
+		''' Function to write data to DB from json files in a folder in the working directory'''
+		path_to_names = '{basedir}/{folder}/'.format(basedir=os.getcwd(), folder=FETCHED_DATA_FOLDER)
+		filenames = os.listdir(path_to_names)
+		full_paths =  ['{path}/{file}'.format(path=path_to_names, file=filename) for filename in filenames]
+		for filename in full_paths:
+			try:
+				updated_data = pd.read_json(filename).to_dict(orient='records')
+			except ValueError:
+				continue
+			self._write_economic_dicts_to_db(updated_data)
+
+	def run_stored_procedures(self):
+		sp_list = ['sp_updated_freshest_date',
+  				   'sp_delete_duplicates_from_cust_series'
+				]
+		conn = self.session.bind.raw_connection()
+		try:
+			cursor = conn.cursor()
+			for sp in sp_list:
+				cursor.callproc(sp)
+			cursor.close()
+			conn.commit()
+		finally:	
+			conn.close()
+
+	def update(self):
+		''' This should be run from run_etl.py. '''
+		last_updated = self.fetch_last_updated_dates()
+		self.fetch_all_fresh_series(last_updated)
+		self.write_to_db_from_json_filenames()
+		self.run_stored_procedures()
+		return 0
+
 
 
 if __name__ == '__main__':
 
 	f =	Fetcher()
-	f.run_stored_procedures()
+	f.update()
 	#historical_btc = f.fetch_historical_bitcoin_data()
 	#f.write_economic_data_to_db(historical_btc)
 	#d = f.fetch_bitcoin_average(10522)
