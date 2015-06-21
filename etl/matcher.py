@@ -1,105 +1,45 @@
-import pandas as pd 
+from datetime import datetime, timedelta
+
 import numpy as np
-from fetcher import Fetcher
+import pandas as pd 
+from sqlalchemy import func
 
+import connection_manager as cm
+from etl.models import EconomicMetadata, EconomicSeries, Match
 
-class Matcher(object):
-    '''
-        Class should take two inputs - a data frame and a series, both with date indices.
-        Should prepare data and run series matching algorithms, producing a closest match.
+class MatchingAlgorithm(object):
 
+    def __init__(self, start_date, matching_object):
+        self.start_date = pd.to_datetime(start_date)
+        self.matching_object = matching_object
 
-        We should also make sure there's not SO much missing data in the time frames 
-        we're looking at.
-
-    '''
-
-    def __init__(self, btc_series, df):
-        self.raw_btc_series = btc_series
-        self.raw_df = df
-    
-    def prep_frame(self, start_date):
+    def prep_frame(self):
         ''' This method should be run each time you want to test a new start date '''
-
-        self.start_date = start_date
-
         # backfill missing data
-        processed_btc = self.raw_btc_series.fillna(method='pad')
-        processed_df = self.raw_df.fillna(method='pad')
-        
-        # cut off data to the given start date
-        self.btc = processed_btc[processed_btc.index >= start_date]
-        self.comparison_series = processed_df[processed_df.index >= start_date]
+        padded_btc = self.matching_object.raw_btc.fillna(method='pad')
+        padded_data = self.matching_object.raw_data.fillna(method='pad')
 
-        self.ibtc = (self.btc / self.btc.iloc[0])['price']
-        self.idata = self.comparison_series / self.comparison_series.iloc[0,]
-
-    def index_series(self, series):
-        return series / series[0]
-
-    def covariance(self):
-        covariances = dict()
-        for i in self.comparison_series: # build a dict matching 
-            covariances.update({i: self.btc.cov(self.comparison_series[i])})
-        return covariances
-
-
-    def variances(self, index=False):
-        standard_deviations = self.std_devs(index=index)
-        return map(lambda x: x**2, standard_deviations)
-
-    def total_percent_change(self, diff=False):
-        comparison_series_pct_change = self.comparison_series.iloc[-1,:] / self.comparison_series.iloc[0,:]
-        btc_pct_change = self.btc.iloc[-1] / self.btc.iloc[0]
-        if diff:
-            return comparison_series_pct_change - btc_pct_change
-        else:
-            return btc_pct_change, comparison_series_pct_change
-
-    def max_percent_change(self):
-        max_btc = (self.btc.max() / self.btc.min())[0]
-        values = {}
-        for i in self.comparison_series:
-            series = self.comparison_series[i]
-            values.update({i:(series.max()/series.min())})
-        return max_btc, pd.Series(values)
-
-    def cross_correlate(self):
-        correlations = {i: np.correlate(self.idata[i], self.ibtc) for i in self.idata}
-        return pd.DataFrame(correlations)
-
-    def mean_absolute_deviation(self):
-        pass
+        self.btc = padded_btc[padded_btc.index >= self.start_date]
+        self.data = padded_data[padded_data.index >= self.start_date]
+        self.ibtc = (self.btc / self.btc.iloc[0])['value']
+        self.idata = self.data / self.data.iloc[0,]
 
     def std_devs(self, index=False, diff=False):
         if index:
             std_devs = self.idata.apply(np.std)
             btc_std_dev = self.ibtc.std()
         else:
-            std_devs = self.comparison_series.apply(np.std)
+            std_devs = self.df.apply(np.std)
             btc_std_dev = self.btc.std()[0]
         if diff:
             return std_devs - btc_std_dev
         else:
             return btc_std_dev, std_devs
 
-    def matcher(self):
+    def algorithm(self):
         ''' This method applies the matching algorithm, and returns the source and code
-            of the winning series.
+            of the winning series. '''
 
-            Maybe take rolling averages? 14-day moving averages?
-
-            Idea 1:
-                * First, find the series with the closest standard deviations
-                * Of those, find the one with the closest percent change
-
-            Idea 2:
-                * Have a point system. So, if you're the closest in standard deviation, 
-                  that's a certain number of points. If you're closest in percent change, that's
-                  another couple of points
-                * Add up the points, and the highest points wins. We can also weight different measures
-                  differently, emphasizing one statistic over the other
-        '''
         diffs = self.std_devs(index=True, diff=True)
         fifty_closest_std_index = diffs.abs().order()[:50].index    
         fifty_closest_std_series = self.idata[fifty_closest_std_index]
@@ -113,21 +53,101 @@ class Matcher(object):
         least_squared_diff = (series_diffs ** 2).apply(np.sum).order().index[0]
         return least_squared_diff
 
+    def match(self):
+        self.prep_frame()
+        match = self.algorithm()
+        print self.start_date, match
+        return {'start_date': self.start_date, 'match':match}
+
+
+class Matcher(object):
+    ''' Should mirror Fetcher in that it reads from a table, determines 
+        which dates are missing, and fills in the matches for the missing
+        dates. Uses a MatchingAlgorithm object to identify matches. '''
+
+    def __init__(self):
+        self.session = cm.DBConnect().create_session()
+        self.list_of_dates = []
+        self.matches = []
+
+    def load_data(self):
+        engine = self.session.bind        
+        # find bitcoin series id
+        btc_id = self.session.query(EconomicMetadata.id).filter(EconomicMetadata.quandl_code==None).one()[0]
+        data = pd.read_sql_table('cust_series', engine) # fetch data
+        btc = data[data.series_id==btc_id] # pull bitcoin data out of data frame into its own
+        self.raw_btc = data[['date', 'value']].set_index('date')
+        data = data[data.series_id != btc_id]
+        self.raw_data = data.pivot(index='date', columns='series_id', values='value')
+        return btc, data
+
+    def generate_dates_to_be_matched(self):
+        '''
+            V1: Generate a list of dates, match all of them
+            V2: Generate a list of date pairs, remove ones that exist in the table, match the rest
+        '''
+        start = self.session.query(func.min(EconomicSeries.date)).one()[0] # fetch earliest date
+        end = datetime.now().date() - timedelta(days = 15)
+        number_of_days = (end - start).days
+        list_of_dates = list()
+        for i in range(number_of_days):
+            next_day = start + timedelta(days = i)
+            next_day = pd.to_datetime(next_day)
+            self.list_of_dates.append(next_day)
+
+    def generate_match_pairs(self):
+        ''' Should produce a list of tuples containing start and end dates to be matched '''
+        pass
+
+    def match_days(self):
+        for date in self.list_of_dates:
+            if (self.raw_btc.index.max() < date) or (self.raw_data.index.max() < date): # are we matching a date we don't have?
+                return self.matches
+            algo = MatchingAlgorithm(date, self)
+            match = algo.match()
+            self.matches.append(match)
+
+    def write_matches_to_db(self):
+        matches = [Match(start_date = datapoint['start_date'],
+                         series_id=datapoint['match'])
+                         for datapoint in self.matches]
+        self.session.add_all(matches)
+        self.session.commit()
+        self.session.close()
+        return 0
+
+    def run_matcher(self):
+        ''' 1) Loads raw data from the DB, 
+            2) Puts together a set of dates, 
+            3) Runs the matching algorithm
+            4) Writes matches to DB '''
+
+        self.load_data() 
+        self.generate_dates_to_be_matched()
+        self.match_days()
+        self.write_matches_to_db()
+        
+
 
 if __name__ == '__main__':
 
+    '''
     data = pd.read_csv('sample_data/full_test_frame.csv')
     data.set_index('Date', inplace=True)
-
-
     btc = pd.read_csv('sample_data/historical_btc_data.csv') #Fetcher().fetch_bitcoin_series()
+    btc.columns = pd.Index(['date', 'price'])
     btc.set_index('date', inplace=True)
+    '''
 
-    START_DATE = '2014-01-01'
+    m = Matcher()
+    matches = m.run_matcher()
+    print matches
+
+    '''
     m = Matcher(btc, data)
+
     m.prep_frame(START_DATE)
-
     match = m.matcher()
-    print match
+    '''
 
-    correlations = m.cross_correlate()
+    #correlations = m.cross_correlate()

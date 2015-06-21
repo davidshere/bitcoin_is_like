@@ -14,8 +14,8 @@ ENV = os.environ['BIL_ENV']
 
 class DBConnect(object):
 
-	def __init__(self):
-		self.environment = ENV
+	def __init__(self, env=ENV):
+		self.environment = env
 		self.engine = None
 
 	def get_credentials(self):

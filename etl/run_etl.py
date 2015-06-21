@@ -1,8 +1,10 @@
-'''
-Heroku should call this file once a day
+from fetcher import Fetcher
+from matcher import Matcher
 
+if __name__ == '__main__':
 
-1. Run fetcher.py to update cust_series
-2. Run matcher.py to run the matcher and update cust_match
+	f = Fetcher()
+	f.update()
 
-'''
+	m = Matcher()
+	m.run_matcher()
