@@ -5,7 +5,7 @@ import pandas as pd
 from sqlalchemy import func
 
 import connection_manager as cm
-from etl.models import EconomicMetadata, EconomicSeries, Match
+from models import EconomicMetadata, EconomicSeries, Match
 
 class MatchingAlgorithm(object):
 
