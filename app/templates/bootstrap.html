@@ -15,7 +15,7 @@
     <script src="http://code.highcharts.com/highcharts.js"></script>
     <script src="http://code.highcharts.com/modules/exporting.js"></script>
     <!-- My charts -->
-    <script src="../static/js/charts.js"></script>
+    <script src="../static/js/bil.js"></script>
 
     <!-- Bootstrap Core JavaScript -->
     <script src="../static/js/bootstrap.min.js"></script>
@@ -36,18 +36,7 @@
         <script src="https://oss.maxcdn.com/libs/respond.js/1.4.2/respond.min.js"></script>
     <![endif]-->
     <title>bitcoin is like</title>
-    <script>
-        var response;
-        $.getJSON('/_btc_history', function(btc){
-            btc_series = btc;
-            console.log(response);
-        });
-        //console.log(response);
-        //var text = response.responseText;
-        // btc_data = $.parseJSON(text);
-        //return text;
-        //}
-    </script>
+
 
 </head>
 
@@ -64,25 +53,13 @@
                     </a>
                 </li>
                 <li>
-                    <a href="#">Dashboard</a>
+                    <a href="#">Charts</a>
                 </li>
                 <li>
-                    <a href="#">Shortcuts</a>
+                    <a href="#">About Bitcoin</a>
                 </li>
                 <li>
-                    <a href="#">Overview</a>
-                </li>
-                <li>
-                    <a href="#">Events</a>
-                </li>
-                <li>
-                    <a href="#">About</a>
-                </li>
-                <li>
-                    <a href="#">Services</a>
-                </li>
-                <li>
-                    <a href="#">Contact</a>
+                    <a href="#">About Bitcoin Is Like</a>
                 </li>
             </ul>
         </div>
@@ -94,53 +71,9 @@
                 <div class="row">
                     <div class="col-lg-12">
                         <h1>Bitcoin Is Like</h1>
-                        <p>This template has a responsive menu toggling system. The menu will appear collapsed on smaller screens, and will appear non-collapsed on larger screens. When toggled using the button below, the menu will appear/disappear. On small screens, the page content will be pushed off canvas.</p>
-                        <p>Make sure to keep all page content within the <code>#page-content-wrapper</code>.</p>
-                        <div class="datetimepickers">
-                        <div class="container">
-                            <div class="col-sm-6" style="height:50px;">
-                                <div class="form-group">
-                                    <div class='input-group date' id='datetimepicker10'>
-                                        <input type='text' class="form-control" />
-                                        <span class="input-group-addon">
-                                            <span class="glyphicon glyphicon-calendar">
-                                            </span>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            <script type="text/javascript">
-                                $(function () {
-                                    $('#datetimepicker10').datetimepicker({
-                                        viewMode: 'years',
-                                        format: 'MM/YYYY'
-                                    });
-                                });
-                            </script>
-                        </div>
-                        <div class="container">
-                            <div class="col-sm-6" style="height:50px;">
-                                <div class="form-group">
-                                    <div class='input-group date' id='datetimepicker10'>
-                                        <input type='text' class="form-control" />
-                                        <span class="input-group-addon">
-                                            <span class="glyphicon glyphicon-calendar">
-                                            </span>
-                                        </span>
-                                    </div>
-                                </div>
-                            </div>
-                            <script type="text/javascript">
-                                $(function () {
-                                    $('#datetimepicker10').datetimepicker({
-                                        viewMode: 'years',
-                                        format: 'MM/YYYY'
-                                    });
-                                });
-                            </script>
-                        </div>
-                    </div>
-                        <a href="#menu-toggle" class="btn btn-default" id="menu-toggle">Toggle Menu</a>
+                        <p>Welcome to Bitcoin Is Like</p>
+                        <p>This is a tool to learn more about bitcoin, and how it behaves as a financial asset. Input a start date, and we'll show you an asset that's gone on a similar journey in the same amount of time. Whether you bought high, sold low, or missed the fun entirely, find out what lucky (or unlucky!) corporate board took went along for the ride.</p>
+                        <a class="btn btn-default">Submit</a>
                         <div id="chart" style="min-width: 310px; height: 400px; margin: 0 auto"></div>
                     </div>
                 </div>
@@ -151,17 +84,5 @@
     </div>
     <!-- /#wrapper -->
 
-
-
-
-    <!-- Menu Toggle Script -->
-    <script>
-    $("#menu-toggle").click(function(e) {
-        e.preventDefault();
-        $("#wrapper").toggleClass("toggled");
-    });
-    </script>
-
 </body>
-
 </html>
