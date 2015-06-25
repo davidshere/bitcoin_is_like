@@ -11,7 +11,7 @@ import requests
 from sqlalchemy import update, func
 
 from connection_manager import DBConnect
-from etl.config import QUANDL_API_KEY
+from config import QUANDL_API_KEY
 from models import EconomicMetadata, EconomicSeries
 
 FETCHED_DATA_FOLDER = 'fetched_data'
@@ -62,16 +62,15 @@ class FetchQuandl(FetcherBase):
 				2b. If there is no last updated date, fetch all data past a given start date
 
 		'''
+		self.data = pd.DataFrame() # initialize this attribute so I can check to see if it is populated later
 		source = self.metadata['source_code']
 		qcode = self.metadata['quandl_code']
 		# check if there's a last updated date, then fetch the data
 		if self.metadata['last_updated']:
 			next = self.metadata['last_updated'] + timedelta(days=1)
 			# THIS IS CRAPPY, YOU SHOULD FIX IT AT SOME POINT
-			try: # protect against exceptions when hitting the Quandl API
-				self.data = self._fetch_quandl_series(qcode, source, start=next)
-			except:
-				return None
+			#try: # protect against exceptions when hitting the Quandl API
+			self.data = self._fetch_quandl_series(qcode, source, start=next)
 		else:
 			self.data = self._fetch_quandl_series(qcode, source)
 
@@ -86,8 +85,9 @@ class FetchQuandl(FetcherBase):
 
 	def fetch(self):
 		self.fetch_single_latest_quandl()
-		self.transform()
-		self.write_to_json()
+		if self.data.size > 0: # in fetch_single_latest_quandl returns nothing
+			self.transform()
+			self.write_to_json()
 
 
 class FetchBTC(FetcherBase):
