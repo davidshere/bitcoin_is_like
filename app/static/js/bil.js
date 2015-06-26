@@ -30,6 +30,10 @@ $(document).ready(fetch_btc);
 // Function to fetch a match based on input. 
 // It'll succesfully hit the server and process the result
 // But it won't get the proper values from form...yet!
+
+
+
+
 function fetchMatch(){
     /* 
 
@@ -38,6 +42,10 @@ function fetchMatch(){
         end_date = $form.find('input[name="end_date"]').val();
         console.log(start_date);   
     */
+
+    start_date = $("#start-date").val();
+    end_date = $("#end-date").val();
+
     $.post('/_fetch_match_series', {
         start_date: start_date,
         end_date: end_date
@@ -46,6 +54,7 @@ function fetchMatch(){
         return result;
     });
 }
+
 
 function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];

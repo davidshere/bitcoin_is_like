@@ -1,8 +1,6 @@
 from flask import jsonify, render_template, request
 
 from app import app
-from connection_manager import DBConnect
-from models import Match, EconomicSeries, EconomicMetadata
 from series_fetcher import SeriesFetcher
 
 SAMPLE_START_DATE = '2014-01-01'
@@ -21,8 +19,8 @@ def bitcoin_endpoint():
 
 @app.route('/_fetch_match_series', methods=['GET', 'POST'])
 def match_endpoint():
-	''' We're not sending over data from the client, yet, so we'll set temporary arguments '''
-	start_date = '2015-01-01'
+	''' We haven't implemented the end date yet, so for now we'll only utilize the start_date '''
+	start_date, end_date = request.form.values()
 	match_dict = SeriesFetcher().fetch_match(start_date)
 	return jsonify(match_dict)
 
