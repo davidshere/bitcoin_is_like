@@ -1,23 +1,37 @@
-from flask import jsonify, render_template
+from flask import jsonify, render_template, request
 
 from app import app
 from connection_manager import DBConnect
 from models import Match, EconomicSeries, EconomicMetadata
+from series_fetcher import SeriesFetcher
 
 SAMPLE_START_DATE = '2014-01-01'
 
 @app.route('/')
 @app.route('/index')
 def index():
-	return render_template('bootstrap.html')
+	return render_template('index.html')
 
 
 @app.route('/_btc_history')
 def bitcoin_endpoint():
-	session = DBConnect().create_session()
-	btc_id = session.query(EconomicMetadata.id).filter(EconomicMetadata.quandl_code==None).one()[0]
-	query = session.query(EconomicSeries.date, EconomicSeries.value)
-	filtered_query = query.filter(EconomicSeries.series_id==btc_id)
-	result = filtered_query.all()
-	processed_result = [(a[0].isoformat(), float(a[1])) for a in result] # datetime into string, Decimal into float
-	return jsonify(processed_result)
+	bitcoin_series = SeriesFetcher().fetch_bitcoin_series()
+	return jsonify(bitcoin_series)
+
+
+@app.route('/_fetch_match_series', methods=['GET', 'POST'])
+def match_endpoint():
+	''' We're not sending over data from the client, yet, so we'll set temporary arguments '''
+	start_date = '2015-01-01'
+	match_dict = SeriesFetcher().fetch_match(start_date)
+	return jsonify(match_dict)
+
+
+@app.route('/about-btc')
+def about_btc():
+	return render_template('base.html')
+
+
+@app.route('/about-bil')
+def about_bil():
+	return render_template('base.html')

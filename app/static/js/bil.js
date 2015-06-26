@@ -10,34 +10,6 @@
 // when the page loads. We'll send this data over to highcharts.js to 
 // pleasingly display.
 
-
-
-
-/*
-var get_btc_dates = function(btc_obj) {
-}
-$(document).ready(get_btc_dates);
-
-var get_btc_values = function(){
-    values = new Array;
-
-    return values;
-}
-$(document).ready(get_btc_values);
-
-
-
-var btc_series = (function (){
-    $.getJSON('/_btc_history', function(btc){
-        return btc;
-    }
-)}());
-keys = Object.keys(btc_series);
-for (key in keys) {
-    values.push(btc_series[key]);
-}
-*/
-
 function fetch_btc(){
     $.getJSON('/_btc_history', function(btc){
         var btc_series = btc;
@@ -49,30 +21,33 @@ function fetch_btc(){
         }
         console.log(values); // for my own sanity
         var btc_data = {'dates': dates, 'values': values};
-        visualize(btc_data); // I.e., you want to perform whatever operations you need the data for INSIDE the callback
+        visualize_btc(btc_data); // I.e., you want to perform whatever operations you need the data for INSIDE the callback
 
     }
 )}
 $(document).ready(fetch_btc);
 
+// Function to fetch a match based on input. 
+// It'll succesfully hit the server and process the result
+// But it won't get the proper values from form...yet!
+function fetchMatch(){
+    /* 
 
+    var $form = $(this),
+        start_date = $form.find('input[name="start_date"]').val(),
+        end_date = $form.find('input[name="end_date"]').val();
+        console.log(start_date);   
+    */
+    $.post('/_fetch_match_series', {
+        start_date: start_date,
+        end_date: end_date
+    }).done(function(result){
+        console.log("Match result: ", result)
+        return result;
+    });
+}
 
-/*
-function fetch_btc(){
-    $.getJSON('/_btc_history', function(btc){
-        var btc_series = btc;
-        var keys = Object.keys(btc_series);
-        var btc_data = [btc_series, keys];
-        return btc_data
-
-    }
-)}
-$(document).ready(fetch_btc);
-
-k = Object.keys(btc_series);
-console.log(k);
-*/
-function visualize(dates_and_values){
+function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];
     var values = dates_and_values['values'];
     
@@ -93,8 +68,8 @@ function visualize(dates_and_values){
                 type: 'datetime',
 
             },
-
             series: [{
+                name: 'bitcoin',
                 pointStart: start_time,
                 pointInterval: 24 * 3600 * 1000, // one day
                 data: values
