@@ -28,20 +28,11 @@ function fetch_btc(){
 $(document).ready(fetch_btc);
 
 // Function to fetch a match based on input. 
-// It'll succesfully hit the server and process the result
-// But it won't get the proper values from form...yet!
-
+// Once it fetches the match it should update the chart
 
 
 
 function fetchMatch(){
-    /* 
-
-    var $form = $(this),
-        start_date = $form.find('input[name="start_date"]').val(),
-        end_date = $form.find('input[name="end_date"]').val();
-        console.log(start_date);   
-    */
 
     start_date = $("#start-date").val();
     end_date = $("#end-date").val();
