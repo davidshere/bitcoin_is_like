@@ -12,15 +12,13 @@
 
 function fetch_btc(){
     $.getJSON('/_btc_history', function(btc){
-        var btc_series = btc;
-        var dates = Object.keys(btc_series);
-        var values = new Array;
-        for(i in dates){
-            //console.log(key);
-            values.push(btc_series[dates[i]]);
+        btc_series = btc;
+        btc_dates = Object.keys(btc_series);
+        btc_values = new Array;
+        for(i in btc_dates){
+            btc_values.push(btc_series[btc_dates[i]]);
         }
-        console.log(values); // for my own sanity
-        var btc_data = {'dates': dates, 'values': values};
+        var btc_data = {'dates': btc_dates, 'values': btc_values};
         visualize_btc(btc_data); // I.e., you want to perform whatever operations you need the data for INSIDE the callback
 
     }
@@ -34,18 +32,90 @@ $(document).ready(fetch_btc);
 
 function fetchMatch(){
 
-    start_date = $("#start-date").val();
-    end_date = $("#end-date").val();
+    startDate = $("#start-date").val();
+    endDate = $("#end-date").val();
 
-    $.post('/_fetch_match_series', {
-        start_date: start_date,
-        end_date: end_date
-    }).done(function(result){
-        console.log("Match result: ", result)
-        return result;
-    });
+    if(startDate===""){ // if there's no start_date
+        fetch_btc()
+    } else {
+        $.post('/_fetch_match_series', {
+            startDate: startDate,
+            endDate: endDate 
+        }).done(function(result){
+            // separate out the pieces of the result object
+            var company_name = result['company_name'];
+            var matchSeries = result['series'];
+
+            // instantiage 
+
+            var dates = Object.keys(matchSeries);
+            var matchValues = new Array;
+
+
+            // Now we've got to process the series to properly index
+            var first_match_date = dates[0]
+            var first_date_array = first_match_date.split('-');
+            match_series_start_time = Date.UTC(first_date_array[0], 
+                                               first_date_array[1], 
+                                               first_date_array[2]);
+            var firstMatchValue = matchSeries[first_match_date]
+
+            for(i in dates){
+                var indexed_value = matchSeries[dates[i]] / firstMatchValue;
+                matchValues.push(indexed_value);
+            }
+
+            // Here we're going to reindex the bitcoin data on the new series
+            newBTCSeries = new Array;
+
+            for (date in btc_series){ // populate array with dates following the minimum_start_date
+                dateArray = date.split('-');
+                utc_date = Date.UTC(dateArray[0], dateArray[1], dateArray[2]);
+                if (match_series_start_time <= utc_date){ // we only want btc values past the minimum start date
+                    newBTCSeries.push(btc_series[date]);
+                }
+            }
+            var firstBTCValue = newBTCSeries[0];
+            var newBTCIndex = new Array;
+            for(i in newBTCSeries){
+                newBTCIndex.push(newBTCSeries[i] / firstBTCValue)
+            }
+
+            var matchSeries = {
+                name: company_name,
+                pointStart: match_series_start_time,
+                pointInterval: 24 * 3600 * 1000, // one day
+                data: matchValues
+            }
+
+            var indexedBtcSeries = {
+                name: 'bitcoin',
+                pointStart: match_series_start_time ,
+                pointInterval: 24 * 3600 * 1000, // one day
+                data: newBTCIndex
+            }
+
+            var chartOptions =  {
+                    title: {
+                        text: 'bitcoin is like'
+                    },
+                    chart: {
+                        type: 'line',
+                        renderTo: 'chart'
+                    },
+                    xAxis: {
+                        type: 'datetime',
+
+                    },
+                    series: [
+                        matchSeries,
+                        indexedBtcSeries
+                    ]
+                };
+            chart = new Highcharts.Chart(chartOptions);
+        });
+    }
 }
-
 
 function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];
@@ -53,78 +123,28 @@ function visualize_btc(dates_and_values){
     
     // Need to create a date object to start my chart
     var first = dates[0].split('-');
-    var start_time = Date.UTC(first[0], first[1], first[2]);
-    console.log(start_time);
+    var btc_start_time = Date.UTC(first[0], first[1], first[2]);
 
     $(function () {
-        $('#chart').highcharts({
-            title: {
-                text: 'bitcoin is like'
-            },
-            chart: {
-                type: 'line'
-            },
-            xAxis: {
-                type: 'datetime',
+        var chartOptions =  {
+                        title: {
+                            text: 'bitcoin is like'
+                        },
+                        chart: {
+                            type: 'line',
+                            renderTo: 'chart'
+                        },
+                        xAxis: {
+                            type: 'datetime',
 
-            },
-            series: [{
-                name: 'bitcoin',
-                pointStart: start_time,
-                pointInterval: 24 * 3600 * 1000, // one day
-                data: values
-            }]
-        });
+                        },
+                        series: [{
+                            name: 'bitcoin',
+                            pointStart: btc_start_time,
+                            pointInterval: 24 * 3600 * 1000, // one day
+                            data: btc_values
+                        }]
+                    };
+        chart = new Highcharts.Chart(chartOptions);
     });
 }
-// CHART CITY!
-/*
-$(function () {
-    $('#chart').highcharts({
-        title: {
-            text: 'Bitcoin Is Like',
-            x: -20 //center
-        },
-        subtitle: {
-            text: 'Powered by BitcoinAverage.com and Quandl',
-            x: -20
-        },
-        xAxis: {
-            categories: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        },
-        yAxis: {
-            title: {
-                text: 'Temperature (°C)'
-            },
-            plotLines: [{
-                value: 0,
-                width: 1,
-                color: '#808080'
-            }]
-        },
-        tooltip: {
-            valueSuffix: '°C'
-        },
-        legend: {
-            layout: 'vertical',
-            align: 'right',
-            verticalAlign: 'middle',
-            borderWidth: 0
-        },
-        series: [{
-            name: 'Tokyo',
-            data: [7.0, 6.9, 9.5, 14.5, 18.2, 21.5, 25.2, 26.5, 23.3, 18.3, 13.9, 9.6]
-        }, {
-            name: 'New York',
-            data: [-0.2, 0.8, 5.7, 11.3, 17.0, 22.0, 24.8, 24.1, 20.1, 14.1, 8.6, 2.5]
-        }, {
-            name: 'Berlin',
-            data: [-0.9, 0.6, 3.5, 8.4, 13.5, 17.0, 18.6, 17.9, 14.3, 9.0, 3.9, 1.0]
-        }, {
-            name: 'London',
-            data: [3.9, 4.2, 5.7, 8.5, 11.9, 15.2, 17.0, 16.6, 14.2, 10.3, 6.6, 4.8]
-        }]
-    });
-});
-*/

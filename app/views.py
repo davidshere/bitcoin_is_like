@@ -10,7 +10,6 @@ SAMPLE_START_DATE = '2014-01-01'
 def index():
 	return render_template('index.html')
 
-
 @app.route('/_btc_history')
 def bitcoin_endpoint():
 	bitcoin_series = SeriesFetcher().fetch_bitcoin_series()
@@ -32,4 +31,4 @@ def about_btc():
 
 @app.route('/about-bil')
 def about_bil():
-	return render_template('base.html')
+	return render_template('about-bil.html')

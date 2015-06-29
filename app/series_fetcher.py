@@ -39,7 +39,7 @@ class SeriesFetcher(object):
 		return self.return_dict
 
 	def _process_series_query_results(self, result):
-		return [(row[0].isoformat(), float(row[1])) for row in result]
+		return {row[0].isoformat(): float(row[1]) for row in result}
 
 
 	
