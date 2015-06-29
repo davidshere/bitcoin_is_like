@@ -11,17 +11,12 @@
 
     <!-- jQuery -->
     <script src="../static/js/jquery.js"></script>
-    <!-- Highcharts Scripts-->
-    <script src="http://code.highcharts.com/highcharts.js"></script>
-    <script src="http://code.highcharts.com/modules/exporting.js"></script>
-    <!-- My charts -->
-    <script src="../static/js/bil.js"></script>
+
+    {% block biljs %}
+    {% endblock %}
 
     <!-- Bootstrap Core JavaScript -->
     <script src="../static/js/bootstrap.min.js"></script>
-    <script src="../static/js/moment.js"></script>
-
-
 
     <!-- Bootstrap Core CSS -->
     <link href="../static/css/bootstrap.min.css" rel="stylesheet">
@@ -54,9 +49,6 @@
                 </li>
                 <li>
                     <a href="/index">Charts</a>
-                </li>
-                <li>
-                    <a href="/about-btc">About Bitcoin</a>
                 </li>
                 <li>
                     <a href="/about-bil">About Bitcoin Is Like</a>

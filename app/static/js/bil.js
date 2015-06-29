@@ -10,7 +10,7 @@
 // when the page loads. We'll send this data over to highcharts.js to 
 // pleasingly display.
 
-function fetch_btc(){
+function fetchBTC(){
     $.getJSON('/_btc_history', function(btc){
         btc_series = btc;
         btc_dates = Object.keys(btc_series);
@@ -18,12 +18,12 @@ function fetch_btc(){
         for(i in btc_dates){
             btc_values.push(btc_series[btc_dates[i]]);
         }
-        var btc_data = {'dates': btc_dates, 'values': btc_values};
+        btc_data = {'dates': btc_dates, 'values': btc_values};
         visualize_btc(btc_data); // I.e., you want to perform whatever operations you need the data for INSIDE the callback
 
     }
 )}
-$(document).ready(fetch_btc);
+$(document).ready(fetchBTC());
 
 // Function to fetch a match based on input. 
 // Once it fetches the match it should update the chart
@@ -35,8 +35,8 @@ function fetchMatch(){
     startDate = $("#start-date").val();
     endDate = $("#end-date").val();
 
-    if(startDate===""){ // if there's no start_date
-        fetch_btc()
+    if (startDate===""){
+        visualize_btc(btc_data);
     } else {
         $.post('/_fetch_match_series', {
             startDate: startDate,
@@ -46,58 +46,29 @@ function fetchMatch(){
             var company_name = result['company_name'];
             var matchSeries = result['series'];
 
-            // instantiage 
+            var matchDates = Object.keys(matchSeries);
+            var matchSeriesStart = firstDateFromArray(matchDates);
 
-            var dates = Object.keys(matchSeries);
-            var matchValues = new Array;
+            matchValues = reindexMatchSeries(matchSeries, matchDates);
+            newBTCIndex = reindexBTCSeries(btc_series, matchSeriesStart);
 
-
-            // Now we've got to process the series to properly index
-            var first_match_date = dates[0]
-            var first_date_array = first_match_date.split('-');
-            match_series_start_time = Date.UTC(first_date_array[0], 
-                                               first_date_array[1], 
-                                               first_date_array[2]);
-            var firstMatchValue = matchSeries[first_match_date]
-
-            for(i in dates){
-                var indexed_value = matchSeries[dates[i]] / firstMatchValue;
-                matchValues.push(indexed_value);
-            }
-
-            // Here we're going to reindex the bitcoin data on the new series
-            newBTCSeries = new Array;
-
-            for (date in btc_series){ // populate array with dates following the minimum_start_date
-                dateArray = date.split('-');
-                utc_date = Date.UTC(dateArray[0], dateArray[1], dateArray[2]);
-                if (match_series_start_time <= utc_date){ // we only want btc values past the minimum start date
-                    newBTCSeries.push(btc_series[date]);
-                }
-            }
-            var firstBTCValue = newBTCSeries[0];
-            var newBTCIndex = new Array;
-            for(i in newBTCSeries){
-                newBTCIndex.push(newBTCSeries[i] / firstBTCValue)
-            }
-
-            var matchSeries = {
+            var indexedMatchSeries = {
                 name: company_name,
-                pointStart: match_series_start_time,
+                pointStart: matchSeriesStart,
                 pointInterval: 24 * 3600 * 1000, // one day
                 data: matchValues
             }
 
             var indexedBtcSeries = {
                 name: 'bitcoin',
-                pointStart: match_series_start_time ,
+                pointStart: matchSeriesStart ,
                 pointInterval: 24 * 3600 * 1000, // one day
                 data: newBTCIndex
             }
 
             var chartOptions =  {
                     title: {
-                        text: 'bitcoin is like'
+                        text: 'Bitcoin Is Like'
                     },
                     chart: {
                         type: 'line',
@@ -107,8 +78,11 @@ function fetchMatch(){
                         type: 'datetime',
 
                     },
+                    yAxis: {
+                        min: 0
+                    },
                     series: [
-                        matchSeries,
+                        indexedMatchSeries,
                         indexedBtcSeries
                     ]
                 };
@@ -121,30 +95,68 @@ function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];
     var values = dates_and_values['values'];
     
-    // Need to create a date object to start my chart
-    var first = dates[0].split('-');
-    var btc_start_time = Date.UTC(first[0], first[1], first[2]);
+    var btc_start_time = firstDateFromArray(dates);
 
-    $(function () {
-        var chartOptions =  {
-                        title: {
-                            text: 'bitcoin is like'
-                        },
-                        chart: {
-                            type: 'line',
-                            renderTo: 'chart'
-                        },
-                        xAxis: {
-                            type: 'datetime',
+    var chartOptions =  {
+                    title: {
+                        text: 'Bitcoin Is Like'
+                    },
+                    chart: {
+                        type: 'line',
+                        renderTo: 'chart'
+                    },
+                    xAxis: {
+                        type: 'datetime',
 
-                        },
-                        series: [{
-                            name: 'bitcoin',
-                            pointStart: btc_start_time,
-                            pointInterval: 24 * 3600 * 1000, // one day
-                            data: btc_values
-                        }]
-                    };
-        chart = new Highcharts.Chart(chartOptions);
-    });
+                    },
+                    yAxis: {
+                        min: 0
+                    },
+                    series: [{
+                        name: 'bitcoin',
+                        pointStart: btc_start_time,
+                        pointInterval: 24 * 3600 * 1000, // one day
+                        data: values
+                    }]
+                };
+    chart = new Highcharts.Chart(chartOptions);
 }
+
+function firstDateFromArray(arrayObject){
+    // Turns ["2014-01-01", "2014-01-02"...] into Date.UTC(2014, 01, 01)
+    var first = arrayObject[0].split('-');
+    var startTime = Date.UTC(first[0], first[1], first[2]);
+    return startTime
+}
+
+function reindexMatchSeries(series, dates){
+    var first_date = dates[0];
+    var matchValues = new Array;
+    var firstMatchValue = series[first_date];
+
+    for(var i in dates){
+        var indexed_value = series[dates[i]] / firstMatchValue;
+        matchValues.push(indexed_value);
+    }
+    return matchValues;
+}
+
+function reindexBTCSeries(btc_series, first_date){ 
+    // Here we're going to reindex the bitcoin data on the new series
+    var newBTCSeries = new Array;
+    for (var date in btc_series){ // populate array with dates following the minimum_start_date
+        var dateArray = date.split('-');
+        var utc_date = Date.UTC(dateArray[0], dateArray[1], dateArray[2]);
+        if (first_date <= utc_date){ // we only want btc values past the minimum start date
+            newBTCSeries.push(btc_series[date]);
+        }
+    }
+    var firstBTCValue = newBTCSeries[0];
+    var newBTCIndex = new Array;
+    for(var i in newBTCSeries){
+        newBTCIndex.push(newBTCSeries[i] / firstBTCValue)
+    }
+    return newBTCIndex
+}
+
+

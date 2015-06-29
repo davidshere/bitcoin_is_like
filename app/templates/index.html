@@ -1,5 +1,12 @@
 {% extends 'base.html' %}
 
+{% block biljs %}
+    <!-- Highcharts Scripts-->
+    <script src="http://code.highcharts.com/highcharts.js"></script>
+    <!-- My charts -->
+    <script src="../static/js/bil.js"></script>
+{% endblock %}
+
 {% block content %}
         <div id="page-content-wrapper">
             <div class="container-fluid">
@@ -12,7 +19,7 @@
 
 
                             <p>Start Date: <input id="start-date" type="text" name="start-date"> End Date: <input type="text" id="end-date" name="end-date"></p>
-                             <button id="date-button" onclick="fetchMatch();">Click me</button> 
+                             <button id="date-button" onclick="fetchMatch();">Find Match</button> 
 
 
 
