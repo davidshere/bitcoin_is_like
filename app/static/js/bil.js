@@ -43,7 +43,6 @@ function fetchMatch(){
             endDate: endDate 
         }).done(function(result){
             // separate out the pieces of the result object
-            var company_name = result['company_name'];
             var matchSeries = result['series'];
 
             var matchDates = Object.keys(matchSeries);
@@ -51,7 +50,9 @@ function fetchMatch(){
 
             matchValues = reindexMatchSeries(matchSeries, matchDates);
             newBTCIndex = reindexBTCSeries(btc_series, matchSeriesStart);
-
+            
+            var company_name = result['company_name'];
+            
             var indexedMatchSeries = {
                 name: company_name,
                 pointStart: matchSeriesStart,
