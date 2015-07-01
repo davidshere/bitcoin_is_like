@@ -48,11 +48,11 @@ function fetchMatch(){
             var matchDates = Object.keys(matchSeries);
             var matchSeriesStart = firstDateFromArray(matchDates);
 
-            matchValues = reindexMatchSeries(matchSeries, matchDates);
-            newBTCIndex = reindexBTCSeries(btc_series, matchSeriesStart);
+            matchValues = processMatchSeries(matchSeries, matchDates);
+            newBTCIndex = processBTCSeries(btc_series, matchSeriesStart);
             
             var company_name = result['company_name'];
-            
+
             var indexedMatchSeries = {
                 name: company_name,
                 pointStart: matchSeriesStart,
@@ -62,7 +62,8 @@ function fetchMatch(){
 
             var indexedBtcSeries = {
                 name: 'bitcoin',
-                pointStart: matchSeriesStart ,
+                pointStart: matchSeriesStart,
+                yAxis: 1,
                 pointInterval: 24 * 3600 * 1000, // one day
                 data: newBTCIndex
             }
@@ -79,9 +80,13 @@ function fetchMatch(){
                         type: 'datetime',
 
                     },
-                    yAxis: {
-                        min: 0
+                    yAxis: [{
+                        min: 0,
                     },
+                    {
+                        min: 0,
+                        opposite: true
+                    }],
                     series: [
                         indexedMatchSeries,
                         indexedBtcSeries
@@ -130,19 +135,19 @@ function firstDateFromArray(arrayObject){
     return startTime
 }
 
-function reindexMatchSeries(series, dates){
+function processMatchSeries(series, dates){
     var first_date = dates[0];
     var matchValues = new Array;
     var firstMatchValue = series[first_date];
 
     for(var i in dates){
         var indexed_value = series[dates[i]] / firstMatchValue;
-        matchValues.push(indexed_value);
+        matchValues.push(series[dates[i]]);
     }
     return matchValues;
 }
 
-function reindexBTCSeries(btc_series, first_date){ 
+function processBTCSeries(btc_series, first_date){ 
     // Here we're going to reindex the bitcoin data on the new series
     var newBTCSeries = new Array;
     for (var date in btc_series){ // populate array with dates following the minimum_start_date
@@ -155,7 +160,7 @@ function reindexBTCSeries(btc_series, first_date){
     var firstBTCValue = newBTCSeries[0];
     var newBTCIndex = new Array;
     for(var i in newBTCSeries){
-        newBTCIndex.push(newBTCSeries[i] / firstBTCValue)
+        newBTCIndex.push(newBTCSeries[i])
     }
     return newBTCIndex
 }
