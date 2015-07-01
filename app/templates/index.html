@@ -1,6 +1,7 @@
 {% extends 'base.html' %}
 
 {% block biljs %}
+    <script src="../static/js/moment.js"></script>
     <!-- Highcharts Scripts-->
     <script src="http://code.highcharts.com/highcharts.js"></script>
     <!-- My charts -->
@@ -18,7 +19,8 @@
 
 
 
-                            <p>Start Date: <input id="start-date" type="text" name="start-date"> End Date: <input type="text" id="end-date" name="end-date"></p>
+                            <p>Start Date: <input id="start-date" type="text" name="start-date"></p>
+                            <div id="invalid-input"></div>
                              <button id="date-button" onclick="fetchMatch();">Find Match</button> 
 
 
