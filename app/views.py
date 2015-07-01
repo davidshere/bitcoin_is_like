@@ -24,10 +24,10 @@ def match_endpoint():
 	match_dict = SeriesFetcher().fetch_match(start_date)
 	return jsonify(match_dict)
 
-@app.route('/_last_match')
-def last_match():
-	date = SeriesFetcher().fetch_last_match()
-	return jsonify(date)
+@app.route('/_match_range')
+def match_range():
+	dates = SeriesFetcher().fetch_last_match()
+	return jsonify(dates)
 
 @app.route('/about-btc')
 def about_btc():

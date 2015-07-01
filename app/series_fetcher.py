@@ -41,9 +41,10 @@ class SeriesFetcher(object):
 		return self.match_dict
 
 	def fetch_last_match(self):
-		last_match = DBConnect().create_session().query(func.max(Match.start_date)).one()[0]
-		return {'date': last_match.isoformat()}
-
+		match_date_range = self.session.query(func.max(Match.start_date), func.min(Match.start_date)).one()
+		earliest = match_date_range[0].isoformat()
+		latest = match_date_range[1].isoformat()
+		return {'earliest': earliest, 'latest': latest}
 
 	def _process_series_query_results(self, result):
 		return {row[0].isoformat(): float(row[1]) for row in result}

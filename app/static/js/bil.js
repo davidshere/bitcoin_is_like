@@ -24,16 +24,17 @@ function fetchBTC(){
     }
 )}
 
-function fetchLastMatchDate(){
+function fetchMatchDateRange(){
     // need this to make sure we don't try to query for a date that doesn't exist
-    $.getJSON('/_last_match', function(result){
-        last_match_date = moment(result['date']);
+    $.getJSON('/_match_range', function(result){
+        earliest_match_date = moment(result['earliest'])
+        latest_match_date = moment(result['latest']);
     })
 }
 
 function onPageLoad(){
     fetchBTC();
-    fetchLastMatchDate();
+    fetchMatchDateRange();
 }
 $(document).ready(onPageLoad());
 
@@ -44,11 +45,13 @@ function emptyInvalidInput(){
 }
 
 function dateStringValidator(startDate){
-    if (!moment(startDate).isValid()) { 
+    var momentStart = moment(startDate);
+    if (!momentStart.isValid()) { 
         var invalidDateFormat = "<p>I'm sorry, you've entered an invalid date. The proper format is YYYY-MM-DD<p>";
         $('#invalid-input').html(invalidDateFormat).css('color', 'red');
         return false;
-    } else if (moment(startDate) > last_match_date) {
+    } else if (momentStart < latest_match_date || momentStart > earliest_match_date) {
+        console.log(momentStart > latest_match_date);
         var dateTooLate = "<p>I'm sorry, we don't have a match for that date. Please try another.<p>";
         $('#invalid-input').html(dateTooLate).css('color', 'red');
         return false;
@@ -64,7 +67,6 @@ function fetchMatch(){
         visualize_btc(btc_data);
         return 0;
     } 
-
     if (dateStringValidator(startDate)) {
         $.post('/_fetch_match_series', {
             startDate: startDate
