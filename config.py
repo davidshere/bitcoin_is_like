@@ -4,7 +4,7 @@ CONFIG_VARIABLES = {
 	'database': 'postgres',
 	'username': os.environ['USERNAME'],
 	'password': os.environ['PASSWORD'],
-	'port': os.environ['PORT'],
+	'port': os.environ['DB_PORT'],
 	'hostname': os.environ['HOSTNAME']
 }
 
