@@ -3,14 +3,12 @@ import sys
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-import yaml
 
-ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+from config import CONFIG_VARIABLES
 
-YAML_NAME = 'config.yaml'
-YAML_ADDRESS = '{root}/{config}'.format(root=ROOT_DIR, config=YAML_NAME)
 DB_URI = os.environ['DB_URI']
 ENV = os.environ['BIL_ENV']
+config = CONFIG_VARIABLES
 
 class DBConnect(object):
 
@@ -19,9 +17,6 @@ class DBConnect(object):
 		self.engine = None
 
 	def get_credentials(self):
-		with open(YAML_ADDRESS, 'r') as f:
-			credentials = f.read()
-			config = yaml.load(credentials)[self.environment]
 		return DB_URI.format(database='postgres', 
 							 username=config['username'], 
 							 password=config['password'], 
