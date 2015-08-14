@@ -135,10 +135,14 @@ class FetchBTC(FetcherBase):
 	def transform_bitcoin_data(self, metadata, rows):
 		''' Processes date strings into date objects and truncates data to only the most recent values '''
 		transformed_rows = [{'date': self._parse_bitcoinaverage_datetime(row[0]), 'value':row[-2]} for row in rows]
-		if metadata['last_updated']:
-			value_dicts = [{'date': row['date'],'series_id': metadata['series_id'],'value': row['value']} for row in transformed_rows if row['date'] > metadata['last_updated']]
+		if metadata['last_updated']: # if there's no last updated date pull everything, otherwise only past that date
+			value_dicts = [{'date': row['date'],
+							'series_id': metadata['series_id'],
+							'value': row['value']} for row in transformed_rows if row['date'] > metadata['last_updated']]
 		else:
-			value_dicts = [{'date': row['date'],'series_id': metadata['series_id'],'value': row['value']} for row in transformed_rows]
+			value_dicts = [{'date': row['date'],
+							'series_id': metadata['series_id'],
+							'value': row['value']} for row in transformed_rows]
 		return value_dicts
 
 	def write_bitcoin_data_to_json(self, data):
@@ -216,9 +220,10 @@ class Fetcher(FetcherBase):
 					'series_id': row['series_id'],
 					'value': row['value']
 				} for row in data]
-			self._write_economic_dicts_to_db(engine, updated_data)
 			except ValueError:
 				continue
+			self._write_economic_dicts_to_db(engine, updated_data)
+
 
 	def run_stored_procedures(self):
 		sp_list = ['sp_updated_freshest_date',
@@ -251,7 +256,7 @@ class Fetcher(FetcherBase):
 
 		#calculate and print the time
 		end_time = time.time()
-		minutes = (start_time - end_time) / 
+		minutes = (start_time - end_time) / 60
 		print "Fetcher Duration: {mins} minutes".format(mins=minutes)
 		return 0
 

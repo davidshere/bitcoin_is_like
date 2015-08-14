@@ -1,4 +1,5 @@
 import json
+from sys import argv
 
 import numpy as np
 import pandas as pd
@@ -75,7 +76,10 @@ def load_docs_to_db(df):
 
 if __name__ == '__main__':
 	
-	
-	gdocs = fetch_quandl_docs('GOOG', pages=247)
+	if len(argv) > 1:
+		num_pages = int(argv[1])
+		gdocs = fetch_quandl_docs('GOOG', pages=num_pages)
+	else:
+		gdocs = fetch_quandl_docs('GOOG', pages=247)
 	docs = transform_google_docs(gdocs)
 	load_docs_to_db(docs)

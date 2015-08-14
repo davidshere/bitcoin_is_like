@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import time
 
 import numpy as np
 import pandas as pd 
@@ -131,23 +132,9 @@ class Matcher(object):
 
 if __name__ == '__main__':
 
-    '''
-    data = pd.read_csv('sample_data/full_test_frame.csv')
-    data.set_index('Date', inplace=True)
-    btc = pd.read_csv('sample_data/historical_btc_data.csv') #Fetcher().fetch_bitcoin_series()
-    btc.columns = pd.Index(['date', 'price'])
-    btc.set_index('date', inplace=True)
-    '''
-
+    start_time = time.time()
     m = Matcher()
-    matches = m.run_matcher()
-    print matches
-
-    '''
-    m = Matcher(btc, data)
-
-    m.prep_frame(START_DATE)
-    match = m.matcher()
-    '''
-
-    #correlations = m.cross_correlate()
+    m.run_matcher()
+    end_time = time.time()
+    minutes = (start_time - end_time) / 60
+    print "Matcher Duration: {mins} minutes".format(mins=minutes)
