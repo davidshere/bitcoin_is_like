@@ -1,6 +1,6 @@
 import os
 
-ENV = 'dev'
+ENV = os.environ['BIL_ENV']
 
 CONFIG_VARIABLES = {
 	'database': 'postgres',
