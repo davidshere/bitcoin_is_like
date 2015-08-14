@@ -3,11 +3,9 @@ import json
 import numpy as np
 import pandas as pd
 import requests
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
-from etl.models import EconomicMetadata
-from etl.config import QUANDL_API_KEY
+from models import EconomicMetadata
+from config import QUANDL_API_KEY
 from connection_manager import DBConnect
 
 '''
@@ -55,10 +53,11 @@ def transform_google_docs(json_from_quandl):
 	df.description = df.description.str.encode('utf-8') # encode description to unicode
 	df = df[['quandl_code', 'description', 'series_name', 'source_code', 'to_date']]
 	df.reset_index(inplace=True)
-	print type(df)
 	return df
 
 def load_docs_to_db(df):
+	import time
+	start = time.time()
 	session = DBConnect().create_session()
 	rows = [EconomicMetadata(code=df.ix[i].code, 
 						 source_code=df.ix[i].source_code,
@@ -69,12 +68,14 @@ def load_docs_to_db(df):
 	session.add_all(rows)
 	session.commit()
 	session.close()
-	return rows[0]
+	run_time = time.time() - start
+	print "time: {num_seconds} seconds".format(num_seconds=run_time)
+	return 0
 
 
 if __name__ == '__main__':
 	
 	
-	gdocs = fetch_quandl_docs('GOOG', pages=1)
+	gdocs = fetch_quandl_docs('GOOG', pages=247)
 	docs = transform_google_docs(gdocs)
 	load_docs_to_db(docs)

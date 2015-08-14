@@ -9,6 +9,7 @@ import pandas as pd
 import Quandl as q
 import requests
 from sqlalchemy import update, func
+from Quandl.Quandl import DatasetNotFound
 
 from connection_manager import DBConnect
 from config import QUANDL_API_KEY
@@ -49,6 +50,8 @@ class FetchQuandl(FetcherBase):
 		response.columns = pd.Index([name])
 		return response
 
+
+
 	def add_metadata(self, metadata):
 		self.metadata = metadata
 
@@ -84,10 +87,12 @@ class FetchQuandl(FetcherBase):
 		self.data.to_json(path)
 
 	def fetch(self):
-		self.fetch_single_latest_quandl()
-		if self.data.size > 0: # in fetch_single_latest_quandl returns nothing
+		try:
+			self.fetch_single_latest_quandl()
 			self.transform()
 			self.write_to_json()
+		except DatasetNotFound: # abort the process if there's a problem fetching from Quandl (i.e. if the quandl_code is null) 
+			pass
 
 
 class FetchBTC(FetcherBase):
@@ -158,7 +163,6 @@ class Fetcher(FetcherBase):
 		2. For each code, fetches the data from the last_updated date
 		3. Writes new and updated data to the data base
 	'''
-
 	def fetch_last_updated_dates(self, backfill=False):
 		''' A method to query dim_series for the last updated dates for each series 
 
@@ -193,15 +197,9 @@ class Fetcher(FetcherBase):
 				btc_fetcher.fetch_bitcoin_data()
 		return 0
 
-	def _write_economic_dicts_to_db(self, dicts_to_write):
+	def _write_economic_dicts_to_db(self, engine, dicts_to_write):
 		''' Should write the new values from fetch_latest to cust_series '''
-		economic_series = [EconomicSeries(series_id=datapoint['series_id'],
-									  date=datapoint['date'],
-									  value=datapoint['value']) 
-									  for datapoint in dicts_to_write]
-		self.session.add_all(economic_series)
-		self.session.commit()
-		self.session.close()
+		engine.execute(EconomicSeries.__table__.insert(), dicts_to_write)
 		return 0
 
 	def write_to_db_from_json_filenames(self):
@@ -209,12 +207,18 @@ class Fetcher(FetcherBase):
 		path_to_names = '{basedir}/{folder}/'.format(basedir=os.getcwd(), folder=FETCHED_DATA_FOLDER)
 		filenames = os.listdir(path_to_names)
 		full_paths =  ['{path}/{file}'.format(path=path_to_names, file=filename) for filename in filenames]
+		engine = self.session.connection().engine
 		for filename in full_paths:
 			try:
-				updated_data = pd.read_json(filename).to_dict(orient='records')
+				data = pd.read_json(filename).to_dict(orient='records')
+				updated_data = [{
+					'date': str(row['date']).split(' ')[0],
+					'series_id': row['series_id'],
+					'value': row['value']
+				} for row in data]
+			self._write_economic_dicts_to_db(engine, updated_data)
 			except ValueError:
 				continue
-			self._write_economic_dicts_to_db(updated_data)
 
 	def run_stored_procedures(self):
 		sp_list = ['sp_updated_freshest_date',
@@ -230,13 +234,27 @@ class Fetcher(FetcherBase):
 		finally:	
 			conn.close()
 
-	def update(self):
-		''' This should be run from run_etl.py. '''
-		last_updated = self.fetch_last_updated_dates()
-		self.fetch_all_fresh_series(last_updated)
+	def update(self, from_disk=False):
+		''' This should be run from run_etl.py. 
+
+			The from_disk argument should be set to True if you'd like to
+			skip the process of fetching data from the APIs and only
+			want to write data that's already been fetched.
+
+		'''
+		start_time = time.time() # to time the fetcher
+		if not from_disk: # should we hit the API or skip to the writing?
+			last_updated = self.fetch_last_updated_dates()
+			self.fetch_all_fresh_series(last_updated)
 		self.write_to_db_from_json_filenames()
 		self.run_stored_procedures()
+
+		#calculate and print the time
+		end_time = time.time()
+		minutes = (start_time - end_time) / 
+		print "Fetcher Duration: {mins} minutes".format(mins=minutes)
 		return 0
+
 
 
 
@@ -244,10 +262,3 @@ if __name__ == '__main__':
 
 	f =	Fetcher()
 	f.update()
-	#historical_btc = f.fetch_historical_bitcoin_data()
-	#f.write_economic_data_to_db(historical_btc)
-	#d = f.fetch_bitcoin_average(10522)
-	#print d
-	#f.update()
-
-
