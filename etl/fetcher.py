@@ -227,7 +227,7 @@ class Fetcher(FetcherBase):
 
 	def run_stored_procedures(self):
 		sp_list = ['sp_updated_freshest_date',
-  				   'sp_delete_duplicates_from_cust_series'
+  				   'sp_clean_up_cust_series'
 				]
 		conn = self.session.bind.raw_connection()
 		try:
