@@ -1,5 +1,7 @@
 import json
+import time
 from sys import argv
+
 
 import numpy as np
 import pandas as pd
@@ -46,10 +48,23 @@ def transform_google_docs(json_from_quandl):
 	df = df[df.frequency=='daily']
 
 	#generate quandl codes
- 	quandl_codes = {'{code}'.format(code=df.ix[row].code): '{source_code}/{code}'.format(source_code=df.ix[row].source_code, code=df.ix[row].code) for row in df.index}
- 	quandl_code = pd.Series(quandl_codes)
-	df['quandl_code'] = quandl_code
+	quandl_codes = {}
+	# instantiate a list to hold duplicated entries. Not exactly sure what's 
+	# going on here, but I'm having trouble creating quandl_codes via a dict 
+	# comprehension. Need to specify what to do in cases where the value is a 
+	# string versus where the value is a Series
+	duplicates = [] 
+	for i in df.index:
+		if len(df.ix[i]) > 2:
+			new_code = {'{code}'.format(code=df.ix[i].code): '{source_code}/{code}'.format(source_code=df.ix[i].source_code, code=df.ix[i].code)}
+			quandl_codes.update(new_code)
+		else:
+			duplicates.append(df.ix[i].code)
+	duplicates = [value[0] for value in duplicates]
+	new_codes = {'{code}'.format(code=val):'GOOG/{code}'.format(code=val) for val in duplicates}
+	quandl_codes.update(new_codes)
 
+	df['quandl_code'] = pd.Series(quandl_codes)
 	df['series_name'] = df.name # rename name to series_name
 	df.description = df.description.str.encode('utf-8') # encode description to unicode
 	df = df[['quandl_code', 'description', 'series_name', 'source_code', 'to_date']]
@@ -57,7 +72,6 @@ def transform_google_docs(json_from_quandl):
 	return df
 
 def load_docs_to_db(df):
-	import time
 	start = time.time()
 	session = DBConnect().create_session()
 	rows = [EconomicMetadata(code=df.ix[i].code, 
@@ -70,7 +84,7 @@ def load_docs_to_db(df):
 	session.commit()
 	session.close()
 	run_time = time.time() - start
-	print "time: {num_seconds} seconds".format(num_seconds=run_time)
+	print "time to db: {num_seconds} seconds".format(num_seconds=run_time)
 	return 0
 
 
