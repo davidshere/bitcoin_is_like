@@ -4,24 +4,23 @@ import sys
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from config import CONFIG_VARIABLES
+from config import get_db_config
 
 DB_URI = os.environ['DB_URI']
 ENV = os.environ['BIL_ENV']
-config = CONFIG_VARIABLES
 
 class DBConnect(object):
 
-	def __init__(self, env=ENV):
-		self.environment = env
+	def __init__(self):
 		self.engine = None
+		self.config = get_db_config()
 
 	def get_credentials(self):
 		return DB_URI.format(database='postgres', 
-							 username=config['username'], 
-							 password=config['password'], 
-							 hostname=config['hostname'], 
-							 port=config['port'])
+							 username=self.config['username'], 
+							 password=self.config['password'], 
+							 hostname=self.config['hostname'], 
+							 port=self.config['port'])
 
 	def create_engine(self):
 		pg_address = self.get_credentials()
