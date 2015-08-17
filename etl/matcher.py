@@ -19,8 +19,7 @@ class MatchingAlgorithm(object):
         # backfill missing data
         padded_btc = self.matching_object.raw_btc.fillna(method='pad')
         padded_data = self.matching_object.raw_data.fillna(method='pad')
-
-        self.btc = padded_btc[padded_btc.index >= self.start_date]
+        self.btc = padded_btc[padded_btc.index >= self.start_date.date()]
         self.data = padded_data[padded_data.index >= self.start_date]
         self.ibtc = (self.btc / self.btc.iloc[0])['value']
         self.idata = self.data / self.data.iloc[0,]
@@ -58,7 +57,7 @@ class MatchingAlgorithm(object):
         self.prep_frame()
         match = self.algorithm()
         print self.start_date, match
-        return {'start_date': self.start_date, 'match':match}
+        return {'start_date': self.start_date, 'series_id':match}
 
 
 class Matcher(object):
@@ -68,14 +67,16 @@ class Matcher(object):
 
     def __init__(self):
         self.session = cm.DBConnect().create_session()
+        self.engine = self.session.connection().engine
         self.list_of_dates = []
         self.matches = []
 
     def load_data(self):
-        engine = self.session.bind        
+        engine = self.session.bind  
+        query = '''select * from cust_series;'''      
         # find bitcoin series id
         btc_id = self.session.query(EconomicMetadata.id).filter(EconomicMetadata.quandl_code==None).one()[0]
-        data = pd.read_sql_table('cust_series', engine) # fetch data
+        data =  pd.read_sql_query(query, self.engine)
         btc = data[data.series_id==btc_id] # pull bitcoin data out of data frame into its own
         self.raw_btc = data[['date', 'value']].set_index('date')
         data = data[data.series_id != btc_id]
@@ -88,12 +89,11 @@ class Matcher(object):
             V2: Generate a list of date pairs, remove ones that exist in the table, match the rest
         '''
         start = self.session.query(func.min(EconomicSeries.date)).one()[0] # fetch earliest date
-        end = datetime.now().date() - timedelta(days = 15)
+        end = datetime.now().date() - timedelta(days = 30)
         number_of_days = (end - start).days
         list_of_dates = list()
         for i in range(number_of_days):
             next_day = start + timedelta(days = i)
-            next_day = pd.to_datetime(next_day)
             self.list_of_dates.append(next_day)
 
     def generate_match_pairs(self):
@@ -102,20 +102,16 @@ class Matcher(object):
 
     def match_days(self):
         for date in self.list_of_dates:
-            if (self.raw_btc.index.max() < date) or (self.raw_data.index.max() < date): # are we matching a date we don't have?
+            if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
                 return self.matches
             algo = MatchingAlgorithm(date, self)
             match = algo.match()
             self.matches.append(match)
 
     def write_matches_to_db(self):
-        matches = [Match(start_date = datapoint['start_date'],
-                         series_id=datapoint['match'])
-                         for datapoint in self.matches]
-        self.session.add_all(matches)
-        self.session.commit()
-        self.session.close()
-        return 0
+        ''' Should write the new matches from match_days to fact_match '''
+        self.engine.execute(Match.__table__.insert(), self.matches)
+
 
     def run_matcher(self):
         ''' 1) Loads raw data from the DB, 
@@ -136,5 +132,5 @@ if __name__ == '__main__':
     m = Matcher()
     m.run_matcher()
     end_time = time.time()
-    minutes = (start_time - end_time) / 60
-    print "Matcher Duration: {mins} minutes".format(mins=minutes)
+    minutes = (end_time - start_time) / 60
+    print "\nMatcher Duration: {mins} minutes".format(mins=minutes)
