@@ -1,7 +1,7 @@
-from time import time
+import time
 
-from fetcher import Fetcher
-from matcher import Matcher
+from etl.fetcher import Fetcher
+from etl.matcher import Matcher
 
 def run():
 	fetcher_start_time = time.time()

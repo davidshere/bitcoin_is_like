@@ -256,7 +256,7 @@ class Fetcher(FetcherBase):
 
 		#calculate and print the time
 		end_time = time.time()
-		minutes = (start_time - end_time) / 60
+		minutes = (end_time - start_time) / 60
 		print "Fetcher Duration: {mins} minutes".format(mins=minutes)
 		return 0
 

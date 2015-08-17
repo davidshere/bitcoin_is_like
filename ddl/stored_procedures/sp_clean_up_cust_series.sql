@@ -74,3 +74,5 @@ END;
 $BODY$
 
 LANGUAGE 'plpgsql'
+
+;
