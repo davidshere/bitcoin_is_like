@@ -1,19 +1,18 @@
 from datetime import datetime, timedelta
-import json	
 import os
-import sys
 import time
 		
 import numpy as np
 import pandas as pd
 import Quandl as q
+from Quandl.Quandl import DatasetNotFound
 import requests
 from sqlalchemy import update, func
-from Quandl.Quandl import DatasetNotFound
 
 from connection_manager import DBConnect
 from config import QUANDL_API_KEY
 from models import EconomicMetadata, EconomicSeries
+from utils import rate_limiter
 
 FETCHED_DATA_FOLDER = 'fetched_data'
 
@@ -187,9 +186,14 @@ class Fetcher(FetcherBase):
 
 		keys = ['id', 'quandl_code', 'source_code', 'last_updated']
 		list_of_dicts = [dict(zip(keys, row)) for row in last_updated]
-		return list_of_dicts
+		dates = map(lambda x: x['last_updated'], list_of_dicts),
+		max_date = max(dates)[0]
+		return_list = [series for series in list_of_dicts if series['last_updated'] > max_date - timedelta(30)]
+		return return_list
 
+	@rate_limiter(3)
 	def fetch_all_fresh_series(self, economic_metadata, recently_updated=True):
+		start = datetime.now()
 		for i, series in enumerate(economic_metadata):
 			print i, series
 			if series['quandl_code']: # check if there's a quandl code (btc won't have one)
@@ -266,4 +270,4 @@ class Fetcher(FetcherBase):
 if __name__ == '__main__':
 
 	f =	Fetcher()
-	f.update()
+	last = f.fetch_last_updated_dates()
