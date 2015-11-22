@@ -84,7 +84,8 @@ class FetchQuandl(FetcherBase):
 	def write_to_json(self):
 		path = '{folder}/{qcode}.json'.format(folder=FETCHED_DATA_FOLDER, qcode=self.metadata['id'])
 		self.data.to_json(path)
-
+	
+	@rate_limiter(3)
 	def fetch(self):
 		try:
 			self.fetch_single_latest_quandl()
@@ -191,7 +192,6 @@ class Fetcher(FetcherBase):
 		return_list = [series for series in list_of_dicts if series['last_updated'] > max_date - timedelta(30)]
 		return return_list
 
-	@rate_limiter(3)
 	def fetch_all_fresh_series(self, economic_metadata, recently_updated=True):
 		start = datetime.now()
 		for i, series in enumerate(economic_metadata):
@@ -270,4 +270,4 @@ class Fetcher(FetcherBase):
 if __name__ == '__main__':
 
 	f =	Fetcher()
-	last = f.fetch_last_updated_dates()
+	last = f.update()

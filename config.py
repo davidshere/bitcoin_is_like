@@ -1,6 +1,6 @@
 import os
 
-def get_db_config(environ):
+def get_db_config():
 	config_vars = {
 		'database': 'postgres',
 		'username': os.environ['USERNAME'],
