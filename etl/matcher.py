@@ -68,7 +68,7 @@ class Matcher(object):
     def __init__(self):
         self.session = cm.DBConnect().create_session()
         self.engine = self.session.connection().engine
-        self.list_of_dates = []
+        self.dates_to_match = set()
         self.matches = []
 
     def load_data(self):
@@ -88,20 +88,24 @@ class Matcher(object):
             V1: Generate a list of dates, match all of them
             V2: Generate a list of date pairs, remove ones that exist in the table, match the rest
         '''
-        start = self.session.query(func.min(EconomicSeries.date)).one()[0] # fetch earliest date
+        existing_matches = self.session.query(Match.start_date).all()
+        existing_matches = map(lambda x: x[0], existing_matches)
+        list_of_dates = set()
+        start = self.session.query(func.min(EconomicSeries.date)).one()[0] # fetch earliest 
         end = datetime.now().date() - timedelta(days = 30)
         number_of_days = (end - start).days
-        list_of_dates = list()
+        list_of_dates = set()
         for i in range(number_of_days):
             next_day = start + timedelta(days = i)
-            self.list_of_dates.append(next_day)
+            list_of_dates.add(next_day)
+        self.dates_to_match = list_of_dates.difference(existing_matches)
 
     def generate_match_pairs(self):
         ''' Should produce a list of tuples containing start and end dates to be matched '''
         pass
 
     def match_days(self):
-        for date in self.list_of_dates:
+        for date in self.dates_to_match:
             if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
                 return self.matches
             algo = MatchingAlgorithm(date, self)
