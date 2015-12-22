@@ -10,19 +10,37 @@ from models import EconomicMetadata, EconomicSeries, Match
 
 class MatchingAlgorithm(object):
 
-    def __init__(self, start_date, matching_object):
+    def __init__(self, start_date, end_date, matching_object, matching_series):
         self.start_date = pd.to_datetime(start_date)
+        self.end_date = pd.to_datetime(end_date)
         self.matching_object = matching_object
+        self.matching_series = matching_series
+
+    def finding_series_with_too_many_nas(self, df, threshold=.9):
+        data_left = df.isnull().apply(pd.Series.value_counts).T
+        return data_left[data_left[True] / data_left.apply(sum, axis=1) > threshold].index
+
+    def reduce_raw_data_series(self):
+        ''' Reduces the raw data set by clipping it by time 
+            and removing any with too many nas in the time period
+        '''
+        padded_btc = self.matching_object.raw_btc.fillna(method='pad')
+        padded_data = self.matching_object.raw_data[self.matching_series].fillna(method='pad')
+        max_btc = self.matching_object.raw_btc.value.max()
+        self.btc = padded_btc[(padded_btc.index >= self.start_date.date()) & (padded_btc.index <= self.end_date.date())]
+        trimmed_data = padded_data[(padded_data.index >= self.start_date) & (padded_data.index <= self.end_date)]
+        series_with_too_many_nas = self.finding_series_with_too_many_nas(padded_data)
+        self.data = trimmed_data.drop(series_with_too_many_nas, axis=1)
 
     def prep_frame(self):
         ''' This method should be run each time you want to test a new start date '''
         # backfill missing data
-        padded_btc = self.matching_object.raw_btc.fillna(method='pad')
-        padded_data = self.matching_object.raw_data.fillna(method='pad')
-        self.btc = padded_btc[padded_btc.index >= self.start_date.date()]
-        self.data = padded_data[padded_data.index >= self.start_date]
+        self.reduce_raw_data_series()
         self.ibtc = (self.btc / self.btc.iloc[0])['value']
         self.idata = self.data / self.data.iloc[0,]
+        self.pdata = self.data.apply(pd.Series.pct_change)
+        self.pbtc = self.btc.pct_change()
+
 
     def std_devs(self, index=False, diff=False):
         if index:
@@ -78,7 +96,7 @@ class Matcher(object):
         btc_id = self.session.query(EconomicMetadata.id).filter(EconomicMetadata.quandl_code==None).one()[0]
         data =  pd.read_sql_query(query, self.engine)
         btc = data[data.series_id==btc_id] # pull bitcoin data out of data frame into its own
-        self.raw_btc = data[['date', 'value']].set_index('date')
+        self.raw_btc = btc[['date', 'value']].set_index('date')
         data = data[data.series_id != btc_id]
         self.raw_data = data.pivot(index='date', columns='series_id', values='value')
         return btc, data
@@ -104,11 +122,26 @@ class Matcher(object):
         ''' Should produce a list of tuples containing start and end dates to be matched '''
         pass
 
+    def get_first_and_last_days_of_series(self, start, end):
+        ''' gets the last day of each series, so we're only passing series
+            with enough data '''
+        max_days = {
+                        series_id: {
+                            'max': self.raw_data[series_id].dropna().index.max(),
+                            'min': self.raw_data[series_id].dropna().index.min() 
+                        }
+                    for series_id in self.raw_data
+                }
+        date_ranges = pd.DataFrame(max_days)
+        to_send = ((date_ranges.ix['max'] >= end) & (date_ranges.ix['min'] <= start))
+        return date_ranges.T.ix[to_send].index
+
     def match_days(self):
         for date in self.dates_to_match:
             if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
                 return self.matches
-            algo = MatchingAlgorithm(date, self)
+            matching_series = self.get_series_to_match_names(date)
+            algo = MatchingAlgorithm(date, self, matching_series)
             match = algo.match()
             self.matches.append(match)
 
@@ -134,7 +167,15 @@ if __name__ == '__main__':
 
     start_time = time.time()
     m = Matcher()
+    m.load_data()
+    start = '2010-10-17'
+    end = '2015-01-01'
+    matching_series = m.get_first_and_last_days_of_series(start, end)
+    ma = MatchingAlgorithm(start, end, m, matching_series)
+    ma.prep_frame()
+    '''
     m.run_matcher()
     end_time = time.time()
     minutes = (end_time - start_time) / 60
     print "\nMatcher Duration: {mins} minutes".format(mins=minutes)
+    '''
