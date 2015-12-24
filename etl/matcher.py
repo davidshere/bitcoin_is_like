@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import itertools
 import time
 
 import numpy as np
@@ -17,6 +18,9 @@ class MatchingAlgorithm(object):
         self.matching_series = matching_series
 
     def finding_series_with_too_many_nas(self, df, threshold=.9):
+        ''' Returns a series ids with fewer nans then the threshold. So if 
+            the threshold is .9, at least 90 percent of data in the series
+            must be non null '''
         data_left = df.isnull().apply(pd.Series.value_counts).T
         return data_left[data_left[True] / data_left.apply(sum, axis=1) > threshold].index
 
@@ -75,7 +79,7 @@ class MatchingAlgorithm(object):
         self.prep_frame()
         match = self.algorithm()
         print self.start_date.date().isoformat(), self.end_date.date().isoformat(), match
-        return {'start_date': self.start_date, 'series_id':match}
+        return {'start_date': self.start_date, 'end_date': self.end_date, 'series_id':match}
 
 
 class Matcher(object):
@@ -114,32 +118,42 @@ class Matcher(object):
         return self.date_ranges.T.ix[to_send].index
 
     def get_dates_from_data(self):
-        all_dates = session.query(func.distinct(EconomicSeries.date)).all()
+        all_dates = self.session.query(func.distinct(EconomicSeries.date)).all()
         return map(lambda x: x[0], all_dates)
 
     def get_existing_pairs(self):
-        existing_pairs = session.query(Match.start_date, Match.end_date).all()
+        existing_pairs = self.session.query(Match.start_date, Match.end_date).all()
         return set(existing_pairs)
 
     def get_date_pairs(self):
         all_dates = self.get_dates_from_data()
         old_pairs = self.get_existing_pairs()
-        for start, end in itertools.product(dates, dates):
+        for start, end in itertools.product(all_dates, all_dates):
             if end - start > timedelta(30) and (start, end) not in old_pairs:
                 yield (start, end)
 
-    def match_days(self):
+    def match_days(self, batch=False):
+        ''' Iterates through pairs of days, and matches them if they're unmatched.
+            
+            If batch=False it will dump the matches one at a time to the db, otherwise
+            it'll do them all at once '''
         for start, end in self.get_date_pairs():
 #            if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
 #                return self.matches
             matching_series = self.get_series_to_match(start, end)
             algo = MatchingAlgorithm(start, end, self, matching_series)
             match = algo.match()
-            self.matches.append(match)
+            if batch:
+                self.matches.append(match)
+            else:
+                self.write_individual_match_to_db(match)
 
     def write_matches_to_db(self):
         ''' Should write the new matches from match_days to fact_match '''
         self.engine.execute(Match.__table__.insert(), self.matches)
+
+    def write_individual_match_to_db(self, match):
+        self.engine.execute(Match.__table__.insert(), match)
 
 
     def run_matcher(self):
@@ -151,7 +165,8 @@ class Matcher(object):
         self.load_data() 
         self.get_series_date_ranges()
         self.match_days()
-        self.write_matches_to_db()
+        if batch:
+            self.write_matches_to_db()
         
 
 
