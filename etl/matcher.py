@@ -74,7 +74,7 @@ class MatchingAlgorithm(object):
     def match(self):
         self.prep_frame()
         match = self.algorithm()
-        print self.start_date, match
+        print self.start_date.date().isoformat(), self.end_date.date().isoformat(), match
         return {'start_date': self.start_date, 'series_id':match}
 
 
@@ -86,7 +86,6 @@ class Matcher(object):
     def __init__(self):
         self.session = cm.DBConnect().create_session()
         self.engine = self.session.connection().engine
-        self.dates_to_match = set()
         self.matches = []
 
     def load_data(self):
@@ -101,47 +100,40 @@ class Matcher(object):
         self.raw_data = data.pivot(index='date', columns='series_id', values='value')
         return btc, data
 
-    def generate_dates_to_be_matched(self):
-        '''
-            V1: Generate a list of dates, match all of them
-            V2: Generate a list of date pairs, remove ones that exist in the table, match the rest
-        '''
-        existing_matches = self.session.query(Match.start_date).all()
-        existing_matches = map(lambda x: x[0], existing_matches)
-        list_of_dates = set()
-        start = self.session.query(func.min(EconomicSeries.date)).one()[0] # fetch earliest 
-        end = datetime.now().date() - timedelta(days = 30)
-        number_of_days = (end - start).days
-        list_of_dates = set()
-        for i in range(number_of_days):
-            next_day = start + timedelta(days = i)
-            list_of_dates.add(next_day)
-        self.dates_to_match = list_of_dates.difference(existing_matches)
-
-    def generate_match_pairs(self):
-        ''' Should produce a list of tuples containing start and end dates to be matched '''
-        pass
-
-    def get_first_and_last_days_of_series(self, start, end):
-        ''' gets the last day of each series, so we're only passing series
-            with enough data '''
-        max_days = {
-                        series_id: {
+    def get_series_date_ranges(self):
+        date_ranges = {series_id: {
                             'max': self.raw_data[series_id].dropna().index.max(),
                             'min': self.raw_data[series_id].dropna().index.min() 
-                        }
-                    for series_id in self.raw_data
-                }
-        date_ranges = pd.DataFrame(max_days)
-        to_send = ((date_ranges.ix['max'] >= end) & (date_ranges.ix['min'] <= start))
-        return date_ranges.T.ix[to_send].index
+                        } for series_id in self.raw_data}
+        self.date_ranges = pd.DataFrame(date_ranges)
+
+    def get_series_to_match(self, start, end):
+        ''' gets the last day of each series, so we're only passing series
+            with enough data '''
+        to_send = ((self.date_ranges.ix['max'] >= end) & (self.date_ranges.ix['min'] <= start))
+        return self.date_ranges.T.ix[to_send].index
+
+    def get_dates_from_data(self):
+        all_dates = session.query(func.distinct(EconomicSeries.date)).all()
+        return map(lambda x: x[0], all_dates)
+
+    def get_existing_pairs(self):
+        existing_pairs = session.query(Match.start_date, Match.end_date).all()
+        return set(existing_pairs)
+
+    def get_date_pairs(self):
+        all_dates = self.get_dates_from_data()
+        old_pairs = self.get_existing_pairs()
+        for start, end in itertools.product(dates, dates):
+            if end - start > timedelta(30) and (start, end) not in old_pairs:
+                yield (start, end)
 
     def match_days(self):
-        for date in self.dates_to_match:
-            if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
-                return self.matches
-            matching_series = self.get_series_to_match_names(date)
-            algo = MatchingAlgorithm(date, self, matching_series)
+        for start, end in self.get_date_pairs():
+#            if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
+#                return self.matches
+            matching_series = self.get_series_to_match(start, end)
+            algo = MatchingAlgorithm(start, end, self, matching_series)
             match = algo.match()
             self.matches.append(match)
 
@@ -157,7 +149,7 @@ class Matcher(object):
             4) Writes matches to DB '''
 
         self.load_data() 
-        self.generate_dates_to_be_matched()
+        self.get_series_date_ranges()
         self.match_days()
         self.write_matches_to_db()
         
@@ -167,12 +159,8 @@ if __name__ == '__main__':
 
     start_time = time.time()
     m = Matcher()
-    m.load_data()
-    start = '2010-10-17'
-    end = '2015-01-01'
-    matching_series = m.get_first_and_last_days_of_series(start, end)
-    ma = MatchingAlgorithm(start, end, m, matching_series)
-    ma.prep_frame()
+    m.run_matcher()
+
     '''
     m.run_matcher()
     end_time = time.time()
