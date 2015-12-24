@@ -1,4 +1,4 @@
-// Welcome to bil.js.
+`// Welcome to bil.js.
 //
 // This is the code that runs the front end of bitcoin is like,
 // an app that lets bitcoin lovers learn who out there shares their 
@@ -6,8 +6,10 @@
 
 //////////////////////////////////////////////////////////////////////
 
-// This section loads bitcoin data from the server into a variable 
-// when the page loads. It also grabs the earliest and latest match dates
+// Section: On page load
+// Action:
+//  Fetch Bitcoin data from server
+//  Fetch match start and end dates from server
 
 function fetchBTC(){
     $.getJSON('/_btc_history', function(btc){
@@ -37,8 +39,10 @@ function onPageLoad(){
 }
 $(document).ready(onPageLoad());
 
-// Function to fetch a match based on input. 
-// Once it fetches the match it should update the chart
+//
+// Section: Fetchin the match data from the server
+//
+
 function emptyInvalidInput(){
     $("#invalid-input").empty();
 }
@@ -75,6 +79,10 @@ function fetchMatch(){
         });
     }
 }
+
+//
+//  Section: visualizing the data
+//
 
 function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];
@@ -155,13 +163,20 @@ function vizualizeMatch(result){
     chart = new Highcharts.Chart(chartOptions);
 }
 
+
+// Section: Utility functions
 function dateFromString(dateString){
     var dateArray = dateString.split("-");
     var date = Date.UTC(dateArray[0], dateArray[1] - 1, dateArray[2]); // month -1 because dates go from 0-11, not 1-12
     return date
 }
 
+
+//
+//  Section: process data (move this to the server!
+//
 function processMatchSeries(series, dates){
+    // TODO: We should do this on the server, or better yet the databaes!
     var matchValues = new Array;
     var firstMatchValue = series[0];
     for(var i in dates){
@@ -175,6 +190,9 @@ function processMatchSeries(series, dates){
 
 function processBTCSeries(btc_series, dates){ 
     // Here we're going to trim the bitcoin data to start on the start date
+    // TODO: We should do this on the server, or better yet the database!
+    //       If for some reason we have to do it on the client, let's start
+    //       immediately after the AJAX call, no point waiting around
     var firstDate = dateFromString(dates[0]);
     var firstBTCVal = btc_series[0];
     var newBTCSeries = new Array;
