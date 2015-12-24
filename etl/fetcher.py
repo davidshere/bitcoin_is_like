@@ -25,7 +25,6 @@ class FetcherBase(object):
 		if not os.path.exists(FETCHED_DATA_FOLDER):
 			os.makedirs(FETCHED_DATA_FOLDER)
 
-
 class FetchQuandl(FetcherBase):
 	''' Class to fetch a series from the Quandl API, transform it, and write
 		the results to a .json file '''
@@ -48,8 +47,6 @@ class FetchQuandl(FetcherBase):
 		name = series.split('/')[1]
 		response.columns = pd.Index([name])
 		return response
-
-
 
 	def add_metadata(self, metadata):
 		self.metadata = metadata
@@ -159,6 +156,7 @@ class FetchBTC(FetcherBase):
 		if dicts:
 			self.write_bitcoin_data_to_json(dicts)
 
+
 class Fetcher(FetcherBase):
 	'''
 		Class to update the cust_series table.
@@ -228,7 +226,6 @@ class Fetcher(FetcherBase):
 				continue
 			self._write_economic_dicts_to_db(engine, updated_data)
 
-
 	def run_stored_procedures(self):
 		sp_list = ['sp_updated_freshest_date',
   				   'sp_clean_up_cust_series'
@@ -263,9 +260,6 @@ class Fetcher(FetcherBase):
 		minutes = (end_time - start_time) / 60
 		print "Fetcher Duration: {mins} minutes".format(mins=minutes)
 		return 0
-
-
-
 
 if __name__ == '__main__':
 
