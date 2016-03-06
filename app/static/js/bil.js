@@ -76,7 +76,7 @@ function fetchMatch(){
     console.log(endDate);
     if (startDate==="" && endDate==""){
         emptyInvalidInput();
-        //visualize_btc(btc_data);
+        visualize_btc(btc_data);
         return 0;
     } 
     if (dateStringValidator(startDate, endDate)) {
@@ -84,7 +84,7 @@ function fetchMatch(){
             startDate: startDate,
             endDate: endDate
         }).done(function(matchDataFromServer){
-            //vizualizeMatch(matchDataFromServer);
+            vizualizeMatch(matchDataFromServer);
             emptyInvalidInput();
         });
     }
@@ -93,8 +93,6 @@ function fetchMatch(){
 //
 //  Section: visualizing the data
 //
-
-/*
 
 function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];
@@ -222,7 +220,3 @@ function processBTCSeries(btc_series, dates){
     }
     return newBTCSeries
 }
-
-*/
-
-

@@ -10,8 +10,8 @@ def index():
 
 @app.route('/_btc_history')
 def bitcoin_endpoint():
-	bitcoin_series = SeriesFetcher().fetch_bitcoin_series()
-	return jsonify(bitcoin_series)
+    bitcoin_series = SeriesFetcher().fetch_bitcoin_series()
+    return jsonify(bitcoin_series)
 
 
 @app.route('/_fetch_match_series', methods=['GET', 'POST'])
