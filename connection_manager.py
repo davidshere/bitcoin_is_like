@@ -7,7 +7,6 @@ from sqlalchemy.orm import sessionmaker
 from config import get_db_config
 
 DB_URI = os.environ['DB_URI']
-ENV = os.environ['BIL_ENV']
 
 class DBConnect(object):
 

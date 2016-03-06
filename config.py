@@ -2,11 +2,11 @@ import os
 
 def get_db_config():
 	config_vars = {
-		'database': 'postgres',
-		'username': os.environ['USERNAME'],
-		'password': os.environ['PASSWORD'],
+		'database': os.environ['DB_NAME'],
+		'username': os.environ['DB_USERNAME'],
+		'password': os.environ['DB_PASSWORD'],
 		'port': os.environ['DB_PORT'],
-		'hostname': os.environ['HOSTNAME']
+		'hostname': os.environ['DB_HOSTNAME']
 	}
 	return config_vars
 

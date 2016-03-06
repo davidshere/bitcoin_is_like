@@ -1,4 +1,4 @@
-`// Welcome to bil.js.
+// Welcome to bil.js.
 //
 // This is the code that runs the front end of bitcoin is like,
 // an app that lets bitcoin lovers learn who out there shares their 
@@ -40,16 +40,17 @@ function onPageLoad(){
 $(document).ready(onPageLoad());
 
 //
-// Section: Fetchin the match data from the server
+// Section: Fetching the match data from the server
 //
 
 function emptyInvalidInput(){
     $("#invalid-input").empty();
 }
 
-function dateStringValidator(startDate){
+function dateStringValidator(startDate, endDate){
     var momentStart = moment(startDate);
-    if (!momentStart.isValid()) { 
+    var momentEnd = moment(endDate);
+    if (!momentStart.isValid() || !momentEnd.isValid()) { 
         var invalidDateFormat = "<p>I'm sorry, you've entered an invalid date. The proper format is YYYY-MM-DD<p>";
         $('#invalid-input').html(invalidDateFormat).css('color', 'red');
         return false;
@@ -58,6 +59,11 @@ function dateStringValidator(startDate){
         var dateTooLate = "<p>I'm sorry, we don't have a match for that date. Please try another.<p>";
         $('#invalid-input').html(dateTooLate).css('color', 'red');
         return false;
+    } else if (momentStart > momentEnd) {
+        // TODO: This should fail if it's less than a month apart, because we're not letting folks find matches less than a month apart
+        var wrongOrder = "<p>Please enter a start date that comes before the end date</p>"
+        $('#invalid-input').html(wrongOrder).css('color', 'red');
+        return false;
     } else {
         return true;
     }
@@ -65,16 +71,20 @@ function dateStringValidator(startDate){
 
 function fetchMatch(){
     startDate = $("#start-date").val();
-    if (startDate===""){
+    endDate = $("#end-date").val();
+    console.log(startDate);
+    console.log(endDate);
+    if (startDate==="" && endDate==""){
         emptyInvalidInput();
-        visualize_btc(btc_data);
+        //visualize_btc(btc_data);
         return 0;
     } 
-    if (dateStringValidator(startDate)) {
+    if (dateStringValidator(startDate, endDate)) {
         $.post('/_fetch_match_series', {
-            startDate: startDate
+            startDate: startDate,
+            endDate: endDate
         }).done(function(matchDataFromServer){
-            vizualizeMatch(matchDataFromServer);
+            //vizualizeMatch(matchDataFromServer);
             emptyInvalidInput();
         });
     }
@@ -83,6 +93,8 @@ function fetchMatch(){
 //
 //  Section: visualizing the data
 //
+
+/*
 
 function visualize_btc(dates_and_values){
     var dates = dates_and_values['dates'];
@@ -211,6 +223,6 @@ function processBTCSeries(btc_series, dates){
     return newBTCSeries
 }
 
-
+*/
 
 

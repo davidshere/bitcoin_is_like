@@ -23,12 +23,12 @@ class SeriesFetcher(object):
 		self.processed_btc = {row[0].isoformat(): float(row[1]) for row in result}
 		return self.processed_btc
 
-	def fetch_match_id(self, start_date):
-		if isinstance(start_date, list):
-			self.start_date = start_date[0]
-		else:
-			self.start_date = start_date
-		self.match_id = self.session.query(Match.series_id).filter(Match.start_date==self.start_date).one()[0]
+	def fetch_match_id(self, start_date, end_date):
+		self.start_date = start_date
+		self.end_date = end_date
+		query = self.session.query(Match.series_id)
+		filtered = query.filter((Match.start_date==self.start_date) & (Match.end_date==self.end_date))
+		self.match_id = filtered.one()[0]
 
 	def fetch_match_series(self):
 		series_query = self.session.query(EconomicSeries.date, EconomicSeries.value)
@@ -63,8 +63,8 @@ class SeriesFetcher(object):
 		match_series_dict['series'] = [float(value) for value in match_series_dict['series']]
 		self.match_dict['series'] = match_series_dict
 
-	def fetch_match(self, start_date):
-		self.fetch_match_id(start_date)
+	def fetch_match(self, start_date, end_date):
+		self.fetch_match_id(start_date, end_date)
 		self.fetch_match_series()
 		self.fetch_match_metadata()
 		self.align_match()

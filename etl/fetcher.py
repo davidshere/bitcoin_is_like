@@ -98,14 +98,9 @@ class FetchBTC(FetcherBase):
 
 	def _parse_bitcoinaverage_datetime(self, timestamp):
 		''' Turn 2010-07-17 00:00:00 into a python date object '''
-		dt = timestamp.split()[0].split('-')
-		dtlist = [dt[0], dt[1], dt[2]]
-		datestr = ' '.join(dtlist)
-		datestruct = time.strptime(datestr, '%Y %m %d')
-		date_time = time.mktime(datestruct)
-		dt = datetime.fromtimestamp(date_time)
-		dt = dt.date()
-		return dt
+		date_string = x.split(' ')[0]
+		format_string = '%Y-%m-%d'
+		return datetime.strptime(date_string, format_string).date()
 
 	def fetch_bitcoin_file(self):
 		# fetch json object with different choices for historical data
