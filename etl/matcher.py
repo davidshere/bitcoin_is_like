@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
+from math import floor
 import itertools
+import random
 import time
 
 import numpy as np
@@ -30,7 +32,6 @@ class MatchingAlgorithm(object):
         '''
         padded_btc = self.matching_object.raw_btc.fillna(method='pad')
         padded_data = self.matching_object.raw_data[self.matching_series].fillna(method='pad')
-        max_btc = self.matching_object.raw_btc.value.max()
         self.btc = padded_btc[(padded_btc.index >= self.start_date.date()) & (padded_btc.index <= self.end_date.date())]
         trimmed_data = padded_data[(padded_data.index >= self.start_date) & (padded_data.index <= self.end_date)]
         series_with_too_many_nas = self.finding_series_with_too_many_nas(padded_data)
@@ -40,45 +41,65 @@ class MatchingAlgorithm(object):
         ''' This method should be run each time you want to test a new start date '''
         # backfill missing data
         self.reduce_raw_data_series()
-        self.ibtc = (self.btc / self.btc.iloc[0])['value']
-        self.idata = self.data / self.data.iloc[0,]
-        self.pdata = self.data.apply(pd.Series.pct_change)
-        self.pbtc = self.btc.pct_change()
+        self.length = (self.btc.index.max() - self.btc.index.min()).days
+        self.btc = self.btc.values.reshape(-1, )
 
-
-    def std_devs(self, index=False, diff=False):
-        if index:
-            std_devs = self.idata.apply(np.std)
-            btc_std_dev = self.ibtc.std()
-        else:
-            std_devs = self.df.apply(np.std)
-            btc_std_dev = self.btc.std()[0]
-        if diff:
-            return std_devs - btc_std_dev
-        else:
-            return btc_std_dev, std_devs
+    def standardize(self, array):
+        columnMeans = array.mean(axis=0)
+        return array - columnMeans
 
     def algorithm(self):
-        ''' This method applies the matching algorithm, and returns the source and code
-            of the winning series. '''
+        self.btc -= self.btc.mean()
+        btc_std = self.btc.std()
 
-        diffs = self.std_devs(index=True, diff=True)
-        fifty_closest_std_index = diffs.abs().order()[:50].index    
-        fifty_closest_std_series = self.idata[fifty_closest_std_index]
+        stock_prices_std = self.standardize(self.data)
+        rolling_deviations_df = pd.rolling_std(self.data, self.length)
+        print 'rolling deviations', self.start_date, self.end_date
+        print rolling_deviations_df.shape
+        print rolling_deviations_df.head()
+        print rolling_deviations_df.apply(pd.Series.isnull).apply(pd.Series.value_counts)
+        rolling_deviations_array = rolling_deviations_df.values[(self.length - 1):, :]
 
-        btc_pct = self.ibtc[-1] - self.ibtc[0]
-        data_pct = fifty_closest_std_series.iloc[-1,:] - fifty_closest_std_series.iloc[0,:]
-        ten_closest_pct_diffs_index = (data_pct - btc_pct).abs().order()[:10].index
-        ten_closest_pct_diffs_series = fifty_closest_std_series[ten_closest_pct_diffs_index]
+        correlationsList = []
 
-        series_diffs = (ten_closest_pct_diffs_series - btc_pct)
-        least_squared_diff = (series_diffs ** 2).apply(np.sum).order().index[0]
-        return least_squared_diff
+        for colIdx in xrange(stock_prices_std.shape[1]):
+            corr = np.correlate(stock_prices_std.iloc[:, colIdx].reshape((-1, )), self.btc)
+            correlationsList.append(corr)
+
+        corr_array = np.array(correlationsList).transpose()
+
+        # for some reason, np.divide is haivng a weird broadcasting issue. Explore ASAP.
+        print corr_array.shape[0], '\t', rolling_deviations_array.shape[0], '\t',
+        try:
+            corr_array = np.divide(corr_array, rolling_deviations_array * btc_std)
+            print 'success'
+        except:
+            import pdb
+            pdb.set_trace()
+            print 'failure'
+
+
+        # For reasons that evade me, your data have some series that don't vary for a 60-day period
+        # This makes for a zero denominator in the correlation equation. No can haz.
+        # Instead of intelligent exception handling, I'm just removing them.
+        # Really, this should probably happen BEFORE we divide by zero, but it's late and I workout early, so we're getting pretty hacky here.
+        #corr_array = np.where(corr_array != float('inf'), corr_array, 0)
+
+        # max across correlations array
+        #raw_idx = corr_array.argmax()
+        #cols = corr_array.shape[1]
+        #row_id = int(floor(raw_idx / cols))
+        #col_id = raw_idx % cols
+
+        # get matching series id
+        #matching_series = stock_prices_std.iloc[row_id:(row_id + self.length),col_id].name
+
+        #return matching_series
+
 
     def match(self):
         self.prep_frame()
         match = self.algorithm()
-        print self.start_date.date().isoformat(), self.end_date.date().isoformat(), match
         return {'start_date': self.start_date, 'end_date': self.end_date, 'series_id':match}
 
 
@@ -93,16 +114,13 @@ class Matcher(object):
         self.matches = []
 
     def load_data(self):
-        engine = self.session.bind  
-        query = '''select * from cust_series;'''      
+        query = 'select * from cust_series;'
         # find bitcoin series id
         btc_id = self.session.query(EconomicMetadata.id).filter(EconomicMetadata.quandl_code==None).one()[0]
-        data =  pd.read_sql_query(query, self.engine)
-        btc = data[data.series_id==btc_id] # pull bitcoin data out of data frame into its own
+        price_series =  pd.read_sql_query(query, self.engine)
+        btc = price_series[price_series.series_id==btc_id] # pull bitcoin data out of data frame into its own
         self.raw_btc = btc[['date', 'value']].set_index('date')
-        data = data[data.series_id != btc_id]
-        self.raw_data = data.pivot(index='date', columns='series_id', values='value')
-        return btc, data
+        self.raw_data = price_series.pivot(index='date', columns='series_id', values='value')
 
     def get_series_date_ranges(self):
         date_ranges = {series_id: {
@@ -137,16 +155,20 @@ class Matcher(object):
             
             If batch=False it will dump the matches one at a time to the db, otherwise
             it'll do them all at once '''
-        for start, end in self.get_date_pairs():
-#            if (self.raw_btc.index.max() < date): # are we matching a date we don't have?
-#                return self.matches
+        # TODO: Remove this
+        self.batch = batch
+        pairs = [pair for pair in self.get_date_pairs()]
+        random_pairs = random.sample(pairs, 50)
+        for start, end in random_pairs:
+
+        #for start, end in self.get_date_pairs():
             matching_series = self.get_series_to_match(start, end)
             algo = MatchingAlgorithm(start, end, self, matching_series)
             match = algo.match()
-            if batch:
-                self.matches.append(match)
-            else:
-                self.write_individual_match_to_db(match)
+            # if batch:
+            #      self.matches.append(match)
+            #  else:
+            #      self.write_individual_match_to_db(match)
 
     def write_matches_to_db(self):
         ''' Should write the new matches from match_days to fact_match '''
@@ -161,12 +183,14 @@ class Matcher(object):
             2) Puts together a set of dates, 
             3) Runs the matching algorithm
             4) Writes matches to DB '''
-
-        self.load_data() 
+        self.load_data()
         self.get_series_date_ranges()
-        self.match_days()
-        if batch:
+        return self.match_days()
+        return self.matches
+        if self.batch:
             self.write_matches_to_db()
+
+
         
 
 
@@ -174,7 +198,7 @@ if __name__ == '__main__':
 
     start_time = time.time()
     m = Matcher()
-    m.run_matcher()
+    r = m.run_matcher()
 
     '''
     m.run_matcher()
