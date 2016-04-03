@@ -4,6 +4,8 @@ import itertools
 import random
 import time
 
+from pdb import set_trace
+
 import numpy as np
 import pandas as pd 
 from sqlalchemy import func
@@ -32,10 +34,16 @@ class MatchingAlgorithm(object):
         '''
         padded_btc = self.matching_object.raw_btc.fillna(method='pad')
         padded_data = self.matching_object.raw_data[self.matching_series].fillna(method='pad')
-        self.btc = padded_btc[(padded_btc.index >= self.start_date.date()) & (padded_btc.index <= self.end_date.date())]
-        trimmed_data = padded_data[(padded_data.index >= self.start_date) & (padded_data.index <= self.end_date)]
+        btc = padded_btc[(padded_btc.index >= self.start_date.date()) & (padded_btc.index <= self.end_date.date())]
+
+        # insert correct index (maybe?)
+        btc_index = pd.date_range(btc.index.min(), btc.index.max(), freq='D')
+        self.btc = btc.reindex(btc_index, method='ffill')
+        #trimmed_data = padded_data[(padded_data.index >= self.start_date) & (padded_data.index <= self.end_date)]
         series_with_too_many_nas = self.finding_series_with_too_many_nas(padded_data)
-        self.data = trimmed_data.drop(series_with_too_many_nas, axis=1)
+        self.data = padded_data.drop(series_with_too_many_nas, axis=1)
+        self.data = self.data.drop(32188, axis=1)
+        self.data = self.data.drop(pd.to_datetime('2010-07-18'))
 
     def prep_frame(self):
         ''' This method should be run each time you want to test a new start date '''
@@ -49,27 +57,25 @@ class MatchingAlgorithm(object):
         return array - columnMeans
 
     def algorithm(self):
-        self.btc -= self.btc.mean()
-        btc_std = self.btc.std()
+        btc_values = self.btc - self.btc.mean()
+        btc_std = btc_values.std()
 
-        stock_prices_std = self.standardize(self.data)
-        rolling_deviations_df = pd.rolling_std(self.data, self.length)
-        print 'rolling deviations', self.start_date, self.end_date
-        print rolling_deviations_df.shape
-        print rolling_deviations_df.head()
-        print rolling_deviations_df.apply(pd.Series.isnull).apply(pd.Series.value_counts)
-        rolling_deviations_array = rolling_deviations_df.values[(self.length - 1):, :]
 
-        correlationsList = []
+        # rolling_deviations array will have the same first dimension as self.data.shape - self.length
+        rolling_deviations_array = pd.rolling_std(self.data, self.length).values[(self.length):, :]
 
-        for colIdx in xrange(stock_prices_std.shape[1]):
-            corr = np.correlate(stock_prices_std.iloc[:, colIdx].reshape((-1, )), self.btc)
-            correlationsList.append(corr)
-
-        corr_array = np.array(correlationsList).transpose()
+        corr_list = []
+        # standardized data and corr_list will have the same length
+        # standardized data and self.data will have the same dimensions
+        standardized_data = self.standardize(self.data.values)
+        for colIdx in range(standardized_data.shape[1]):
+            corr = np.correlate(standardized_data[:, colIdx].reshape((-1, )), btc_values)
+            corr_list.append(corr)
+        # corr_array will have the same length as the elements of corr_list
+        corr_array = np.array(corr_list).transpose()
 
         # for some reason, np.divide is haivng a weird broadcasting issue. Explore ASAP.
-        print corr_array.shape[0], '\t', rolling_deviations_array.shape[0], '\t',
+        print corr_array.shape, '\t', rolling_deviations_array.shape, '\t',
         try:
             corr_array = np.divide(corr_array, rolling_deviations_array * btc_std)
             print 'success'
@@ -114,13 +120,17 @@ class Matcher(object):
         self.matches = []
 
     def load_data(self):
-        query = 'select * from cust_series;'
+        query = 'select * from cust_series where series_id in (select id from dim_series);'
         # find bitcoin series id
         btc_id = self.session.query(EconomicMetadata.id).filter(EconomicMetadata.quandl_code==None).one()[0]
         price_series =  pd.read_sql_query(query, self.engine)
         btc = price_series[price_series.series_id==btc_id] # pull bitcoin data out of data frame into its own
         self.raw_btc = btc[['date', 'value']].set_index('date')
         self.raw_data = price_series.pivot(index='date', columns='series_id', values='value')
+
+    def load_data_from_file(self):
+        pass
+
 
     def get_series_date_ranges(self):
         date_ranges = {series_id: {
